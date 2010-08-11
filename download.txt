@@ -1,0 +1,9 @@
+Here is where some of the archives used for building StaticPython
+were downloaded:
+
+* http://www.uclibc.org/downloads/binaries/0.9.30.1/cross-compiler-i686.tar.bz2
+  on the day before Wed Aug 11 16:39:01 CEST 2010
+* http://www.python.org/ftp/python/2.7/Python-2.7.tar.bz2
+  on the day before Wed Aug 11 16:39:01 CEST 2010
+* http://www.stackless.com/binaries/stackless-27-export.tar.bz2
+  on the day of Wed Aug 11 16:39:01 CEST 2010

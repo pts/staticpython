@@ -74,11 +74,12 @@ patchsetup() {
   # This must be run after the configure step, because configure overwrites
   # Modules/Setup
   cp Modules.Setup.2.7.static "$BUILDDIR/Modules/Setup"
+  touch "$BUILDDIR/Modules/Setup"
 }
 
 patchimport() {
   # This patch is idempotent.
-  perl -pi~ -e 's@#ifdef HAVE_DYNAMIC_LOADING@#ifdef HAVE_DYNAMIC_LOADING_NOT  /* StaticPython */@g' "$BUILDDIR"/Python/{import.c,importdl.c}
+  perl -pi~ -e 's@#ifdef HAVE_DYNAMIC_LOADING(?!_NOT)@#ifdef HAVE_DYNAMIC_LOADING_NOT  /* StaticPython */@g' "$BUILDDIR"/Python/{import.c,importdl.c}
 }
 
 patchgetpath() {

@@ -74,7 +74,12 @@ patchsetup() {
   # This must be run after the configure step, because configure overwrites
   # Modules/Setup
   cp Modules.Setup.2.7.static "$BUILDDIR/Modules/Setup"
+  sleep 2  # Wait 2 seconds after the configure script creating Makefile.
   touch "$BUILDDIR/Modules/Setup"
+  # We need to run `make Makefile' to rebuild it using our Modules/Setup
+  ( cd "$BUILDDIR" || exit "$?"
+    make Makefile || exit "$?"
+  )
 }
 
 patchimport() {

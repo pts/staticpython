@@ -24,15 +24,12 @@ fi
 set -e  # Abort on error.
 
 test -d busybox.bin || ./busybox mkdir busybox.bin
-for F in cp mv rm sleep touch mkdir tar expr sed awk ls pwd test \
-         sort cat head tail chmod chown uname basename tr find; do
+for F in cp mv rm sleep touch mkdir tar expr sed awk ls pwd test cmp diff \
+         sort cat head tail chmod chown uname basename tr find grep; do
   ./busybox rm -f busybox.bin/"$F"
   ./busybox ln -s ../busybox busybox.bin/"$F"
 done
 # Good grep for configure.
-# TODO(pts): Get rid of grep and zip in /usr
-./busybox rm -f busybox.bin/grep; ./busybox ln -s /bin/grep busybox.bin/grep
-./busybox rm -f busybox.bin/zip; ./busybox ln -s /usr/bin/zip busybox.bin/zip
 ./busybox rm -f busybox.bin/make; ./busybox ln -s ../make busybox.bin/make
 ./busybox rm -f busybox.bin/perl; ./busybox ln -s ../perl busybox.bin/perl
 export PATH="$PWD/busybox.bin"
@@ -72,8 +69,10 @@ else
 fi
 
 BUILDDIR="$TARGET.build"
-export CC="$PWD/$BUILDDIR/cross-compiler-i686/bin/i686-gcc -static -fno-stack-protector"
-export AR="$PWD/$BUILDDIR/cross-compiler-i686/bin/i686-ar"
+PBUILDDIR="$PWD/$BUILDDIR"
+# ./configure uses $CC, $AR and $RANLIB to generate the Makefile
+export CC="$PBUILDDIR/cross-compiler-i686/bin/i686-gcc -static -fno-stack-protector"
+export AR="$PBUILDDIR/cross-compiler-i686/bin/i686-ar"
 export RANLIB="$PWD/$BUILDDIR/cross-compiler-i686/bin/i686-ranlib"
 
 echo "Running in directory: $PWD"
@@ -269,7 +268,36 @@ patchgeventmysql() {
 }
 
 run_pyrexc() {
-  PYTHONPATH="$PWD/Lib:$PWD/pyrex.dir" ./minipython -S -W ignore::DeprecationWarning -c "from Pyrex.Compiler.Main import main; main(command_line=1)" "$@"
+  PYTHONPATH="$PWD/Lib:$PWD/pyrex.dir" "$PBUILDDIR"/minipython -S -W ignore::DeprecationWarning -c "from Pyrex.Compiler.Main import main; main(command_line=1)" "$@"
+}
+
+#** Equivalent to zip -9r "$@"
+#** Usage: run_mkzip filename.zip file_or_dir ...
+run_mkzip() {
+  local PYTHON="$PBUILDDIR"/python
+  test -f "$PBUILDDIR"/minipython && PYTHON="$PBUILDDIR"/minipython
+  PYTHONPATH="$PWD/Lib" "$PYTHON" -S -c 'if 1:
+  import os
+  import os.path
+  import stat
+  import sys
+  import zipfile
+  def All(filename):
+    s = os.lstat(filename)
+    assert not stat.S_ISLNK(s.st_mode), filename
+    if stat.S_ISDIR(s.st_mode):
+      for entry in os.listdir(filename):
+        for filename2 in All(os.path.join(filename, entry)):
+          yield filename2
+    else:
+      yield filename
+  zip_filename = sys.argv[1]
+  zipfile.zlib.Z_DEFAULT_COMPRESSION = 9  # Maximum effort.
+  z = zipfile.ZipFile(zip_filename, "w", compression=zipfile.ZIP_DEFLATED)
+  for filename in sys.argv[2:]:
+    for filename2 in All(filename):
+      z.write(filename2)
+  z.close()' "$@"
 }
 
 patchconcurrence() {
@@ -316,7 +344,7 @@ makeminipython() {
   test "$IS_CO" || return 0
   ( cd "$BUILDDIR" || return "$?"
     # TODO(pts): Disable co modules in Modules/Setup
-    make python AR="$AR" RANLIB="$RANLIB" || return "$?"
+    make python || return "$?"
     mv -f python minipython
     cross-compiler-i686/bin/i686-strip -s minipython
   ) || return "$?"
@@ -324,7 +352,7 @@ makeminipython() {
 
 makepython() {
   ( cd "$BUILDDIR" || return "$?"
-    make python AR="$AR" RANLIB="$RANLIB" || return "$?"
+    make python || return "$?"
   ) || return "$?"
 }
 
@@ -350,7 +378,7 @@ buildlibzip() {
     cd xlib || exit "$?"
     rm -f *~ */*~ || exit "$?"
     rm -f ../xlib.zip
-    zip -9r ../xlib.zip * || exit "$?"
+    run_mkzip ../xlib.zip * || exit "$?"
   ) || exit "$?"
 }
 

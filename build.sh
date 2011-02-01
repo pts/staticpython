@@ -31,7 +31,7 @@ fi
 
 if test $# = 0; then
   # Don't include betry here.
-  STEPS="initbuilddir extractinst configure patchsetup patchimport patchgetpath patchsqlite makepython buildlibzip buildtarget"
+  STEPS="initbuilddir extractinst configure patchsetup patchimport patchgetpath patchsqlite patchsyncless makepython buildlibzip buildtarget"
 else
   STEPS="$*"
 fi
@@ -59,27 +59,27 @@ initbuilddir() {
   mkdir "$BUILDDIR"
   ( cd "$BUILDDIR" || exit "$?"
     tar xjvf ../"$PYTHONTBZ2" || exit "$?"
-  )
+  ) || exit "$?"
   ( cd "$BUILDDIR" || exit "$?"
     mv */* . || exit "$?"
-  )
+  ) || exit "$?"
   ( cd "$BUILDDIR" || exit "$?"
     mkdir cross-compiler-i686
     cd cross-compiler-i686
     tar xjvf ../../gcxbase.inst.tbz2 || exit "$?"
     tar xjvf ../../gcc.inst.tbz2 || exit "$?"
     tar xjvf ../../gcxtool.inst.tbz2 || exit "$?"
-  )
+  ) || exit "$?"
   ( cd "$BUILDDIR/Modules" || exit "$?"
     tar xzvf ../../greenlet-0.3.1.tar.gz
-  )
+  ) || exit "$?"
 }
 
 extractinst() {
   for INSTTBZ2 in $INSTS; do
     ( cd "$BUILDDIR/cross-compiler-i686" || exit "$?"
       tar xjvf ../../"$INSTTBZ2" || exit "$?"
-    )
+    ) || exit "$?"
   done
 }
 
@@ -88,19 +88,22 @@ configure() {
   # than /usr/bin/gcc).
   ( cd "$BUILDDIR" || exit "$?"
     ./configure --disable-shared --disable-ipv6 || exit "$?"
-  )
+  ) || exit "$?"
 }
 
 patchsetup() {
   # This must be run after the configure step, because configure overwrites
   # Modules/Setup
   cp Modules.Setup.2.7.static "$BUILDDIR/Modules/Setup"
+  if test "$IS_CO"; then
+    cat Modules.Setup.co.2.7.static >>"$BUILDDIR/Modules/Setup"
+  fi
   sleep 2  # Wait 2 seconds after the configure script creating Makefile.
   touch "$BUILDDIR/Modules/Setup"
   # We need to run `make Makefile' to rebuild it using our Modules/Setup
   ( cd "$BUILDDIR" || exit "$?"
     make Makefile || exit "$?"
-  )
+  ) || exit "$"
 }
 
 patchimport() {
@@ -129,10 +132,53 @@ patchsqlite() {
   done
 }
 
+generate_loader_py() {
+  local CEXT_MODNAME="$1"
+  local PY_MODNAME="$2"
+  local PY_FILENAME="Lib/${PY_MODNAME//.//}.py"
+  : Generating loader "$PY_FILENAME"
+  echo "import sys; import $CEXT_MODNAME; sys.modules[__name__] = $CEXT_MODNAME" >"$PY_FILENAME" || return "$?"
+}
+
+patch_and_copy_cext() {
+  local SOURCE_C="$1"
+  local TARGET_C="$2"
+  local CEXT_MODNAME="${TARGET_C%.c}"
+  export CEXT_MODNAME="${CEXT_MODNAME##*/}"
+  : Copying and patching "$SOURCE_C" to "$TARGET_C"
+  <"$SOURCE_C" >"$TARGET_C" perl -0777 -pe '
+    s@^(PyMODINIT_FUNC) +\w+\(@$1 init$ENV{CEXT_MODNAME}(@mg;
+    s@( Py_InitModule\d*)\("\w[\w.]*",@$1("$ENV{CEXT_MODNAME}",@g;
+  '  || return "$?"
+}
+
+enable_co_module() {
+  local CEXT_MODNAME="$1"
+  export CEXT_MODNAME
+  : Enabling co module: "$CEXT_MODNAME"
+  grep -qE "^#?$CEXT_MODNAME " Modules/Setup || return "$?"
+  perl -0777 -pi -e 's@^#$ENV{CEXT_MODNAME} @$ENV{CEXT_MODNAME} @mg' Modules/Setup || return "$?"
+}
+
+patchsyncless() {
+  test "$IS_CO" || return
+  ( cd "$BUILDDIR" || exit "$?"
+    rm -rf syncless-* syncless.dir Lib/syncless Modules/syncless || exit "$?"
+    tar xzvf ../syncless-0.20.tar.gz || exit "$?"
+    mv syncless-0.20 syncless.dir || exit "$?"
+    mkdir Lib/syncless Modules/syncless || exit "$?"
+    cp syncless.dir/syncless/*.py Lib/syncless/ || exit "$?"
+    generate_loader_py _syncless_coio syncless.coio || exit "$?"
+    patch_and_copy_cext syncless.dir/coio_src/coio.c Modules/syncless/_syncless_coio.c || exit "$?"
+    cp syncless.dir/coio_src/{coio_minihdns.{c,h},coio_c_*.h} Modules/syncless/ || exit "$?"
+    enable_co_module _syncless_coio || exit "$?"
+  ) || exit "$?"
+}
+
 makepython() {
   ( cd "$BUILDDIR" || exit "$?"
     make python || exit "$?"
-  )
+  ) || exit "$?"
 }
 
 buildlibzip() {
@@ -147,7 +193,7 @@ buildlibzip() {
     cd xlib || exit "$?"
     rm -f *~ */*~ || exit "$?"
     zip -9r ../xlib.zip * || exit "$?"
-  )
+  ) || exit "$?"
 }
 
 buildtarget() {
@@ -168,7 +214,7 @@ betry() {
   export PYTHONPATH=bardir
   unset PYTHONHOME
   #unset PYTHONPATH
-  (cd be && ./sp)
+  (cd be && ./sp) || exit "$?"
 }
 
 for STEP in $STEPS; do

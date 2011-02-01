@@ -31,7 +31,7 @@ fi
 
 if test $# = 0; then
   # Don't include betry here.
-  STEPS="initbuilddir extractinst configure patchsetup patchimport patchgetpath patchsqlite patchsyncless patchgevent makepython buildlibzip buildtarget"
+  STEPS="initbuilddir extractinst configure patchsetup patchimport patchgetpath patchsqlite makeminipython patchsyncless patchgevent patchconcurrence makepython buildlibzip buildtarget"
 else
   STEPS="$*"
 fi
@@ -142,6 +142,9 @@ patch_and_copy_cext() {
   local TARGET_C="$2"
   local CEXT_MODNAME="${TARGET_C%.c}"
   export CEXT_MODNAME="${CEXT_MODNAME##*/}"
+  export CEXT_MODNAME="${CEXT_MODNAME//._/_}"
+  export CEXT_MODNAME="${CEXT_MODNAME//./_}"
+  export CEXT_MODNAME=_"${CEXT_MODNAME#_}"
   : Copying and patching "$SOURCE_C" to "$TARGET_C"
   <"$SOURCE_C" >"$TARGET_C" perl -0777 -pe '
     s@^(PyMODINIT_FUNC) +\w+\(@$1 init$ENV{CEXT_MODNAME}(@mg;
@@ -210,20 +213,75 @@ END
   ) || return "$?"
 }
 
+run_pyrexc() {
+  PYTHONPATH="$PWD/Lib:$PWD/pyrex.dir" ./minipython -S -W ignore::DeprecationWarning -c "from Pyrex.Compiler.Main import main; main(command_line=1)" "$@"
+}
+
+patchconcurrence() {
+  test "$IS_CO" || return
+  ( cd "$BUILDDIR" || return "$?"
+    rm -rf concurrence-* concurrence.dir pyrex.dir Lib/concurrence Modules/concurrence || return "$?"
+    tar xzvf ../concurrence-0.3.1.tar.gz || return "$?"
+    mv concurrence-0.3.1 concurrence.dir || return "$?"
+    tar xzvf ../Pyrex-0.9.9.tar.gz || return "$?"
+    mv Pyrex-0.9.9 pyrex.dir || return "$?"
+    mkdir Lib/concurrence Modules/concurrence || return "$?"
+    # TODO(pts): Fail if any of the pipe commands fail.
+    (cd concurrence.dir/lib && tar c $(find concurrence -type f -iname '*.py')) |
+        (cd Lib && tar x) || return "$?"
+
+    generate_loader_py _concurrence_event concurrence._event || return "$?"
+    cat >Modules/concurrence/event.h <<'END'
+/**** pts ****/
+#include <event2/event.h>
+#include <event2/event_struct.h>
+#include <event2/event_compat.h>
+END
+    run_pyrexc concurrence.dir/lib/concurrence/concurrence._event.pyx || return "$?"
+    patch_and_copy_cext concurrence.dir/lib/concurrence/concurrence._event.c Modules/concurrence/concurrence._event.c || return "$?"
+    enable_module _concurrence_event || return "$?"
+
+    generate_loader_py _concurrence_io_io concurrence.io._io || return "$?"
+    run_pyrexc concurrence.dir/lib/concurrence/io/concurrence.io._io.pyx || return "$?"
+    patch_and_copy_cext concurrence.dir/lib/concurrence/io/concurrence.io._io.c Modules/concurrence/concurrence.io._io.c || return "$?"
+    cp concurrence.dir/lib/concurrence/io/io_base.{c,h} Modules/concurrence/ || return "$?"
+    enable_module _concurrence_io_io || return "$?"
+
+    generate_loader_py _concurrence_database_mysql_mysql concurrence.database.mysql._mysql || return "$?"
+    run_pyrexc -I concurrence.dir/lib/concurrence/io concurrence.dir/lib/concurrence/database/mysql/concurrence.database.mysql._mysql.pyx || return "$?"
+    patch_and_copy_cext concurrence.dir/lib/concurrence/database/mysql/concurrence.database.mysql._mysql.c Modules/concurrence/concurrence.database.mysql._mysql.c || return "$?"
+    enable_module _concurrence_database_mysql_mysql || return "$?"
+
+  ) || return "$?"
+}
+
+makeminipython() {
+  ( cd "$BUILDDIR" || return "$?"
+    # TODO(pts): Disable co modules in Modules/Setup
+    make python || return "$?"
+    mv -f python minipython
+    cross-compiler-i686/bin/i686-strip -s minipython
+  ) || return "$?"
+}
+
 makepython() {
-  ( cd "$BUILDDIR" || exit "$?"
-    make python || exit "$?"
-  ) || exit "$?"
+  ( cd "$BUILDDIR" || return "$?"
+    make python || return "$?"
+  ) || return "$?"
 }
 
 buildlibzip() {
   # This step doesn't depend on makepython.
   ( set -ex
+    IFS='
+'
     cd "$BUILDDIR" ||
     (test -f xlib.zip && mv xlib.zip xlib.zip.old) || exit "$?"
     rm -rf xlib || exit "$?"
     cp -a Lib xlib || exit "$?"
-    rm -rf xlib/{bdddb,ctypes,distutils,idlelib,lib-tk,lib2to3,msilib,plat-aix*,plat-atheos,plat-beos*,plat-darwin,plat-freebsd*,plat-irix*,plat-mac,plat-netbsd*,plat-next*,plat-os2*,plat-riscos,plat-sunos*,plat-unixware,test,*.egg-info} || exit "$?"
+    rm -f $(find xlib -iname '*.pyc') || exit "$?"
+    rm -f xlib/plat-*/regen
+    rm -rf xlib/{email/test,bdddb,ctypes,distutils,idlelib,lib-tk,lib2to3,msilib,plat-aix*,plat-atheos,plat-beos*,plat-darwin,plat-freebsd*,plat-irix*,plat-mac,plat-netbsd*,plat-next*,plat-os2*,plat-riscos,plat-sunos*,plat-unixware,test,*.egg-info} || exit "$?"
     cp ../site.static.py xlib/site.py || exit "$?"
     cd xlib || exit "$?"
     rm -f *~ */*~ || exit "$?"
@@ -233,7 +291,7 @@ buildlibzip() {
 
 buildtarget() {
   cp "$BUILDDIR"/python "$BUILDDIR/$TARGET"
-  strip -s "$BUILDDIR/$TARGET"
+  "$BUILDDIR"/cross-compiler-i686/bin/i686-strip -s "$BUILDDIR/$TARGET"
   cat "$BUILDDIR"/xlib.zip >>"$BUILDDIR/$TARGET"
   cp "$BUILDDIR/$TARGET" "$TARGET"
   ls -l "$TARGET"

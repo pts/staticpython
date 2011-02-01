@@ -7,16 +7,26 @@
 # Example invocation: ./compie.sh stackless
 # This script has been tested on Ubuntu Hardy, should work on any Linux system.
 #
+# TODO(pts): document: ar cr ../stackless2.7-static.build/cross-compiler-i686/lib/libevent_evhttp.a http.o listener.o bufferevent_sock.o
 
 if true; then  # Make the shell script editable while it's executing.
 
+INSTS_BASE="bzip2-1.0.5.inst.tbz2 ncurses-5.6.inst.tbz2 readline-5.2.inst.tbz2 sqlite-3.7.0.1.inst.tbz2 zlib-1.2.3.3.inst.tbz2"
+
 if test "$1" = stackless; then
   TARGET=stackless2.7-static
-  PYTHONTBZ2=stackless-27-export.tar.bz2
+  PYTHONTBZ2=stackless-271-export.tar.bz2
+  IS_CO=
+  shift
+elif test "$1" = stacklessco; then
+  TARGET=stacklessco2.7-static
+  PYTHONTBZ2=stackless-271-export.tar.bz2
+  IS_CO=1
   shift
 else
   TARGET=python2.7-static
   PYTHONTBZ2=Python-2.7.tar.bz2
+  IS_CO=
 fi
 
 if test $# = 0; then
@@ -24,6 +34,12 @@ if test $# = 0; then
   STEPS="initbuilddir extractinst configure patchsetup patchimport patchgetpath patchsqlite makepython buildlibzip buildtarget"
 else
   STEPS="$*"
+fi
+
+if test "$IS_CO"; then
+  INSTS="$INSTS_BASE libevent2-2.0.10.inst.tbz2"
+else
+  INSTS="$INSTS_BASE"
 fi
 
 cd "${0%/*}"
@@ -34,7 +50,8 @@ echo "Running in directory: $PWD"
 echo "Building target: $TARGET"
 echo "Building in directory: $BUILDDIR"
 echo "Using Python source distribution: $PYTHONTBZ2"
-echo "Will run steps: $STEPS "
+echo "Will run steps: $STEPS"
+echo "Is adding coroutine libraries: $IS_CO"
 echo
 
 initbuilddir() {
@@ -47,7 +64,11 @@ initbuilddir() {
     mv */* . || exit "$?"
   )
   ( cd "$BUILDDIR" || exit "$?"
-    tar xjvf ../cross-compiler-i686.tar.bz2 || exit "$?"
+    mkdir cross-compiler-i686
+    cd cross-compiler-i686
+    tar xjvf ../../gcxbase.inst.tbz2 || exit "$?"
+    tar xjvf ../../gcc.inst.tbz2 || exit "$?"
+    tar xjvf ../../gcxtool.inst.tbz2 || exit "$?"
   )
   ( cd "$BUILDDIR/Modules" || exit "$?"
     tar xzvf ../../greenlet-0.3.1.tar.gz
@@ -55,7 +76,7 @@ initbuilddir() {
 }
 
 extractinst() {
-  for INSTTBZ2 in *.inst.tbz2; do
+  for INSTTBZ2 in $INSTS; do
     ( cd "$BUILDDIR/cross-compiler-i686" || exit "$?"
       tar xjvf ../../"$INSTTBZ2" || exit "$?"
     )

@@ -25,7 +25,7 @@ set -e  # Abort on error.
 
 test -d busybox.bin || ./busybox mkdir busybox.bin
 for F in cp mv rm sleep touch mkdir tar expr sed awk ls pwd test cmp diff \
-         sort cat head tail chmod chown uname basename tr find grep; do
+         sort cat head tail chmod chown uname basename tr find grep ln; do
   ./busybox rm -f busybox.bin/"$F"
   ./busybox ln -s ../busybox busybox.bin/"$F"
 done
@@ -57,7 +57,7 @@ fi
 
 if test $# = 0; then
   # Don't include betry here.
-  STEPS="initbuilddir extractinst configure patchsetup patchimport patchgetpath patchsqlite makeminipython patchsyncless patchgevent patchgeventmysql patchconcurrence makepython buildlibzip buildtarget"
+  STEPS="initbuilddir extractinst configure patchsetup patchimport patchgetpath patchsqlite makeminipython patchsyncless patchgevent patchgeventmysql patchconcurrence patchpycrypto makepython buildlibzip buildtarget"
 else
   STEPS="$*"
 fi
@@ -182,12 +182,15 @@ patch_and_copy_cext() {
   export CEXT_MODNAME="${CEXT_MODNAME//._/_}"
   export CEXT_MODNAME="${CEXT_MODNAME//./_}"
   export CEXT_MODNAME=_"${CEXT_MODNAME#_}"
-  : Copying and patching "$SOURCE_C" to "$TARGET_C"
+  : Copying and patching "$SOURCE_C" to "$TARGET_C", CEXT_MODNAME="$CEXT_MODNAME"
   <"$SOURCE_C" >"$TARGET_C" perl -0777 -pe '
-    s@^(PyMODINIT_FUNC) +\w+\(@$1 init$ENV{CEXT_MODNAME}(@mg;
+    s@^(PyMODINIT_FUNC)\s+\w+\(@$1 init$ENV{CEXT_MODNAME}(@mg;
     s@( Py_InitModule\d*)\("\w[\w.]*",@$1("$ENV{CEXT_MODNAME}",@g;
     # Cython version of the one below.
     s@( Py_InitModule\d*\(__Pyx_NAMESTR\()"\w[\w.]*"\),@$1"$ENV{CEXT_MODNAME}"),@g;
+    # For PyCrypto.
+    s@^[ \t]*(#[ \t]*define\s+MODULE_NAME\s+\S+)@#define MODULE_NAME $ENV{CEXT_MODNAME}@mg;
+    s@^[ \t]*(#[ \t]*define\s+MODULE_NAME\s+\S+.*triple DES.*)@#define MODULE_NAME _Crypto_Cipher_DES3@mg;
   ' || return "$?"
 }
 
@@ -336,6 +339,54 @@ END
     run_pyrexc -I concurrence.dir/lib/concurrence/io concurrence.dir/lib/concurrence/database/mysql/concurrence.database.mysql._mysql.pyx || return "$?"
     patch_and_copy_cext concurrence.dir/lib/concurrence/database/mysql/concurrence.database.mysql._mysql.c Modules/concurrence/concurrence.database.mysql._mysql.c || return "$?"
     enable_module _concurrence_database_mysql_mysql || return "$?"
+
+  ) || return "$?"
+}
+
+patchpycrypto() {
+  test "$IS_CO" || return 0
+  ( cd "$BUILDDIR" || return "$?"
+    rm -rf pycrypto-* pycrypto.dir pyrex.dir Lib/Crypto Modules/pycrypto || return "$?"
+    tar xzvf ../pycrypto-2.3.tar.gz || return "$?"
+    mv pycrypto-2.3 pycrypto.dir || return "$?"
+    mkdir Lib/Crypto Modules/pycrypto Modules/pycrypto/libtom || return "$?"
+    # TODO(pts): Fail if any of the pipe commands fail.
+    (cd pycrypto.dir/lib && tar c $(find Crypto -type f -iname '*.py')) |
+        (cd Lib && tar x) || return "$?"
+
+    ln -s _Crypto_Cipher_DES.c Modules/pycrypto/DES.c || return "$?"
+    cp pycrypto.dir/src/hash_template.c \
+       pycrypto.dir/src/block_template.c \
+       pycrypto.dir/src/stream_template.c \
+       pycrypto.dir/src/pycrypto_compat.h \
+       pycrypto.dir/src/_counter.h \
+       pycrypto.dir/src/Blowfish-tables.h \
+       pycrypto.dir/src/cast5.c \
+       Modules/pycrypto/ || return "$?"
+    cp pycrypto.dir/src/libtom/tomcrypt_des.c \
+       pycrypto.dir/src/libtom/*.h \
+       Modules/pycrypto/libtom/ || return "$?"
+
+    local M CEXT_MODNAME
+    for M in Crypto.Hash.MD2 Crypto.Hash.MD4 Crypto.Hash.SHA256 \
+             Crypto.Hash.RIPEMD160 \
+             Crypto.Cipher.AES Crypto.Cipher.ARC2 Crypto.Cipher.Blowfish \
+             Crypto.Cipher.CAST Crypto.Cipher.DES Crypto.Cipher.DES3 \
+             Crypto.Cipher.ARC4 Crypto.Cipher.XOR \
+             Crypto.Util.strxor Crypto.Util._counter; do \
+      CEXT_MODNAME="${M##*/}"
+      CEXT_MODNAME="${CEXT_MODNAME//._/_}"
+      CEXT_MODNAME="${CEXT_MODNAME//./_}"
+      CEXT_MODNAME=_"${CEXT_MODNAME#_}"
+      generate_loader_py "$CEXT_MODNAME" "$M" || return "$?"
+      patch_and_copy_cext "pycrypto.dir/src/${M##*.}.c" Modules/pycrypto/"$CEXT_MODNAME".c || return "$?"
+      enable_module "$CEXT_MODNAME" || return "$?"
+    done
+
+    perl -0777 -pi -e 's@ Py_InitModule\("Crypto[.]\w+[.]"@ Py_InitModule(""@g' \
+        Modules/pycrypto/hash_template.c \
+        Modules/pycrypto/stream_template.c \
+        Modules/pycrypto/block_template.c
 
   ) || return "$?"
 }

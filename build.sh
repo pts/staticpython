@@ -95,9 +95,6 @@ patchsetup() {
   # This must be run after the configure step, because configure overwrites
   # Modules/Setup
   cp Modules.Setup.2.7.static "$BUILDDIR/Modules/Setup"
-  if test "$IS_CO"; then
-    cat Modules.Setup.co.2.7.static >>"$BUILDDIR/Modules/Setup"
-  fi
   sleep 2  # Wait 2 seconds after the configure script creating Makefile.
   touch "$BUILDDIR/Modules/Setup"
   # We need to run `make Makefile' to rebuild it using our Modules/Setup
@@ -149,30 +146,68 @@ patch_and_copy_cext() {
   <"$SOURCE_C" >"$TARGET_C" perl -0777 -pe '
     s@^(PyMODINIT_FUNC) +\w+\(@$1 init$ENV{CEXT_MODNAME}(@mg;
     s@( Py_InitModule\d*)\("\w[\w.]*",@$1("$ENV{CEXT_MODNAME}",@g;
-  '  || return "$?"
+    # Cython version of the one below.
+    s@( Py_InitModule\d*\(__Pyx_NAMESTR\()"\w[\w.]*"\),@$1"$ENV{CEXT_MODNAME}"),@g;
+  ' || return "$?"
 }
 
-enable_co_module() {
+enable_module() {
   local CEXT_MODNAME="$1"
   export CEXT_MODNAME
-  : Enabling co module: "$CEXT_MODNAME"
+  : Enabling module: "$CEXT_MODNAME"
   grep -qE "^#?$CEXT_MODNAME " Modules/Setup || return "$?"
   perl -0777 -pi -e 's@^#$ENV{CEXT_MODNAME} @$ENV{CEXT_MODNAME} @mg' Modules/Setup || return "$?"
 }
 
 patchsyncless() {
   test "$IS_CO" || return
-  ( cd "$BUILDDIR" || exit "$?"
-    rm -rf syncless-* syncless.dir Lib/syncless Modules/syncless || exit "$?"
-    tar xzvf ../syncless-0.20.tar.gz || exit "$?"
-    mv syncless-0.20 syncless.dir || exit "$?"
-    mkdir Lib/syncless Modules/syncless || exit "$?"
-    cp syncless.dir/syncless/*.py Lib/syncless/ || exit "$?"
-    generate_loader_py _syncless_coio syncless.coio || exit "$?"
-    patch_and_copy_cext syncless.dir/coio_src/coio.c Modules/syncless/_syncless_coio.c || exit "$?"
-    cp syncless.dir/coio_src/{coio_minihdns.{c,h},coio_c_*.h} Modules/syncless/ || exit "$?"
-    enable_co_module _syncless_coio || exit "$?"
-  ) || exit "$?"
+  ( cd "$BUILDDIR" || return "$?"
+    rm -rf syncless-* syncless.dir Lib/syncless Modules/syncless || return "$?"
+    tar xzvf ../syncless-0.20.tar.gz || return "$?"
+    mv syncless-0.20 syncless.dir || return "$?"
+    mkdir Lib/syncless Modules/syncless || return "$?"
+    cp syncless.dir/syncless/*.py Lib/syncless/ || return "$?"
+    generate_loader_py _syncless_coio syncless.coio || return "$?"
+    patch_and_copy_cext syncless.dir/coio_src/coio.c Modules/syncless/_syncless_coio.c || return "$?"
+    cp syncless.dir/coio_src/{coio_minihdns.{c,h},coio_c_*.h} Modules/syncless/ || return "$?"
+    enable_module _syncless_coio || return "$?"
+  ) || return "$?"
+}
+
+patchgevent() {
+  test "$IS_CO" || return
+  ( cd "$BUILDDIR" || return "$?"
+    rm -rf gevent-* gevent.dir Lib/gevent Modules/gevent || return "$?"
+    tar xzvf ../gevent-0.13.2.tar.gz || return "$?"
+    mv gevent-0.13.2 gevent.dir || return "$?"
+    mkdir Lib/gevent Modules/gevent || return "$?"
+    cp gevent.dir/gevent/*.py Lib/gevent/ || return "$?"
+    rm -f gevent.dir/gevent/win32util.py || return "$?"
+    generate_loader_py _gevent_core gevent.core || return "$?"
+    patch_and_copy_cext gevent.dir/gevent/core.c Modules/gevent/_gevent_core.c || return "$?"
+    cat >Modules/gevent/libevent.h <<'END'
+/**** pts ****/
+#include "sys/queue.h"
+#define LIBEVENT_HTTP_MODERN
+#include "event2/event.h"
+#include "event2/event_struct.h"
+#include "event2/event_compat.h"
+#include "event2/http.h"
+#include "event2/http_compat.h"
+#include "event2/http_struct.h"
+#include "event2/buffer.h"
+#include "event2/buffer_compat.h"
+#include "event2/dns.h"
+#include "event2/dns_compat.h"
+#define EVBUFFER_DRAIN evbuffer_drain
+#define EVHTTP_SET_CB  evhttp_set_cb
+#define EVBUFFER_PULLUP(BUF, SIZE) evbuffer_pullup(BUF, SIZE)
+#define current_base event_global_current_base_
+#define TAILQ_GET_NEXT(X) TAILQ_NEXT((X), next)
+extern void *current_base;
+END
+    enable_module _gevent_core || return "$?"
+  ) || return "$?"
 }
 
 makepython() {

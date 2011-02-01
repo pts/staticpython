@@ -507,3 +507,13 @@ _io _io/_iomodule.c _io/bufferedio.c _io/bytesio.c _io/fileio.c _io/iobase.c _io
 
 # **** pts **** nonstandard
 greenlet greenlet-0.3.1/greenlet.c
+
+# **** pts **** Syncless, gevent, Concurrence, gevent-MySQL
+# These will be enabled conditionally by build.sh in enable_module
+#not: _syncless_coio syncless/coio.c coio_src/coio_minihdns.c -lev -DCOIO_USE_CO_STACKLESS -DCOIO_USE_LIBEV -DCOIO_USE_MINIHDNS
+#_syncless_coio syncless/_syncless_coio.c syncless/coio_minihdns.c -levent_core -DCOIO_USE_CO_STACKLESS -DCOIO_USE_LIBEVENT2 -DCOIO_USE_MINIHDNS
+#_gevent_core gevent/_gevent_core.c -levent_core -levent_evhttp
+#_concurrence_event -levent_core concurrence/concurrence._event.c
+#_concurrence_io_io concurrence/concurrence.io._io.c concurrence/io_base.c
+#_concurrence_database_mysql_mysql concurrence/concurrence.database.mysql._mysql.c
+#_geventmysql_mysql geventmysql/geventmysql._mysql.c

@@ -31,7 +31,7 @@ fi
 
 if test $# = 0; then
   # Don't include betry here.
-  STEPS="initbuilddir extractinst configure patchsetup patchimport patchgetpath patchsqlite patchsyncless makepython buildlibzip buildtarget"
+  STEPS="initbuilddir extractinst configure patchsetup patchimport patchgetpath patchsqlite patchsyncless patchgevent makepython buildlibzip buildtarget"
 else
   STEPS="$*"
 fi

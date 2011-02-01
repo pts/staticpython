@@ -31,7 +31,7 @@ fi
 
 if test $# = 0; then
   # Don't include betry here.
-  STEPS="initbuilddir extractinst configure patchsetup patchimport patchgetpath patchsqlite makeminipython patchsyncless patchgevent patchconcurrence makepython buildlibzip buildtarget"
+  STEPS="initbuilddir extractinst configure patchsetup patchimport patchgetpath patchsqlite makeminipython patchsyncless patchgevent patchgeventmysql patchconcurrence makepython buildlibzip buildtarget"
 else
   STEPS="$*"
 fi
@@ -210,6 +210,20 @@ patchgevent() {
 extern void *current_base;
 END
     enable_module _gevent_core || return "$?"
+  ) || return "$?"
+}
+
+patchgeventmysql() {
+  test "$IS_CO" || return
+  ( cd "$BUILDDIR" || return "$?"
+    rm -rf geventmysql-* geventmysql.dir Lib/geventmysql Modules/geventmysql || return "$?"
+    tar xjvf ../geventmysql-20110201.tbz2 || return "$?"
+    mv gevent-MySQL geventmysql.dir || return "$?"
+    mkdir Lib/geventmysql Modules/geventmysql || return "$?"
+    cp geventmysql.dir/lib/geventmysql/*.py Lib/geventmysql/ || return "$?"
+    generate_loader_py _geventmysql_mysql geventmysql._mysql || return "$?"
+    patch_and_copy_cext geventmysql.dir/lib/geventmysql/geventmysql._mysql.c Modules/geventmysql/geventmysql._mysql.c || return "$?"
+    enable_module _geventmysql_mysql || return "$?"
   ) || return "$?"
 }
 

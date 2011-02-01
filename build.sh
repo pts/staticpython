@@ -51,7 +51,7 @@ elif test "$1" = stacklessco; then
   shift
 else
   TARGET=python2.7-static
-  PYTHONTBZ2=Python-2.7.tar.bz2
+  PYTHONTBZ2=Python-2.7.1.tar.bz2
   IS_CO=
 fi
 

@@ -533,3 +533,4 @@ greenlet greenlet-0.3.1/greenlet.c
 #_Crypto_Cipher_XOR pycrypto/_Crypto_Cipher_XOR.c
 #_Crypto_Util_strxor pycrypto/_Crypto_Util_strxor.c
 #_Crypto_Util_counter pycrypto/_Crypto_Util_counter.c
+#_aes_aes aloaes/rijndael-alg-fst.c aloaes/_aes_aes.c

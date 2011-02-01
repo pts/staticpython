@@ -57,7 +57,7 @@ fi
 
 if test $# = 0; then
   # Don't include betry here.
-  STEPS="initbuilddir extractinst configure patchsetup patchimport patchgetpath patchsqlite makeminipython patchsyncless patchgevent patchgeventmysql patchconcurrence patchpycrypto makepython buildlibzip buildtarget"
+  STEPS="initbuilddir extractinst configure patchsetup patchimport patchgetpath patchsqlite makeminipython patchsyncless patchgevent patchgeventmysql patchconcurrence patchpycrypto patchaloaes makepython buildlibzip buildtarget"
 else
   STEPS="$*"
 fi
@@ -390,6 +390,24 @@ patchpycrypto() {
 
   ) || return "$?"
 }
+
+patchaloaes() {
+  test "$IS_CO" || return 0
+  ( cd "$BUILDDIR" || return "$?"
+    rm -rf aloaes-* aloaes.dir Lib/aes Modules/aloaes || return "$?"
+    tar xzvf ../alo-aes-0.3.tar.gz || return "$?"
+    mv alo-aes-0.3 aloaes.dir || return "$?"
+    mkdir Lib/aes Modules/aloaes || return "$?"
+    cp aloaes.dir/aes/*.py Lib/aes/ || return "$?"
+    generate_loader_py _aes_aes aes._aes || return "$?"
+    patch_and_copy_cext aloaes.dir/aes/aesmodule.c Modules/aloaes/_aes_aes.c || return "$?"
+    cp aloaes.dir/aes/rijndael-alg-fst.c \
+       aloaes.dir/aes/rijndael-alg-fst.h \
+       Modules/aloaes/ || return "$?"
+    enable_module _aes_aes || return "$?"
+  ) || return "$?"
+}
+
 
 makeminipython() {
   test "$IS_CO" || return 0

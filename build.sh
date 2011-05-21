@@ -9,6 +9,7 @@
 # This script has been tested on Ubuntu Hardy, should work on any Linux system.
 #
 # TODO(pts): document: ar cr ../stackless2.7-static.build/cross-compiler-i686/lib/libevent_evhttp.a http.o listener.o bufferevent_sock.o
+# TODO(pts): Build linux libs from source as well.
 #
 # To facilitate exit on error,
 #
@@ -81,7 +82,7 @@ fi
 
 if test $# = 0; then
   # Don't include betry here.
-  STEPS="initbuilddir builddeps configure patchsetup patchimport patchgetpath patchsqlite makeminipython patchsyncless patchgevent patchgeventmysql patchconcurrence patchpycrypto patchaloaes makepython buildlibzip buildtarget"
+  STEPS="initbuilddir initdeps configure patchsetup patchimport patchgetpath patchsqlite makeminipython patchsyncless patchgevent patchgeventmysql patchconcurrence patchpycrypto patchaloaes makepython buildlibzip buildtarget"
 else
   STEPS="$*"
 fi
@@ -111,7 +112,7 @@ else
   export RANLIB="$PBUILDDIR/cross-compiler-i686/bin/i686-ranlib"
   export LDFLAGS=""
 
-  export STRIP="$PBUILDDIR/bin/i686-strip -s"
+  export STRIP="$PBUILDDIR/cross-compiler-i686/bin/i686-strip -s"
 fi
 
 echo "Running in directory: $PWD"
@@ -135,6 +136,19 @@ initbuilddir() {
     exit 2
   fi
 
+  if test "$UNAME" = Darwin; then
+    mkdir "$BUILDDIR/build-include"
+    mkdir "$BUILDDIR/build-lib"
+  else
+    ( cd "$BUILDDIR" || return "$?"
+      mkdir cross-compiler-i686
+      cd cross-compiler-i686
+      tar xjvf ../../gcxbase.inst.tbz2 || return "$?"
+      tar xjvf ../../gcc.inst.tbz2 || return "$?"
+      tar xjvf ../../gcxtool.inst.tbz2 || return "$?"
+    ) || return "$?"
+  fi
+
   # Check the C compiler.
   (echo '#include <stdio.h>'
    echo 'main() { return!printf("Hello, World!\n"); }'
@@ -151,28 +165,21 @@ initbuilddir() {
   local OUT="$("$BUILDDIR/hello")"
   test "$?" = 0
   test "$OUT" = "Hello, World!"
-  
+
   ( cd "$BUILDDIR" || return "$?"
     tar xjvf ../"$PYTHONTBZ2" || return "$?"
   ) || return "$?"
   ( cd "$BUILDDIR" || return "$?"
-    mv */* . || return "$?"
+    if test -d Python-*; then
+      mv Python-*/* . || return "$?"
+    fi
+    if test -d stackless-*; then
+      mv stackless-*/* . || return "$?"
+    fi
   ) || return "$?"
   ( cd "$BUILDDIR/Modules" || return "$?"
     tar xzvf ../../greenlet-0.3.1.tar.gz
   ) || return "$?"
-  if test "$UNAME" = Darwin; then
-    mkdir "$BUILDDIR/build-include"
-    mkdir "$BUILDDIR/build-lib"
-  else
-    ( cd "$BUILDDIR" || return "$?"
-      mkdir cross-compiler-i686
-      cd cross-compiler-i686
-      tar xjvf ../../gcxbase.inst.tbz2 || return "$?"
-      tar xjvf ../../gcc.inst.tbz2 || return "$?"
-      tar xjvf ../../gcxtool.inst.tbz2 || return "$?"
-    ) || return "$?"
-  fi
 }
 
 initdeps() {
@@ -244,7 +251,7 @@ buildlibz() {
   ) || return "$?"
 }
 
-extractinst() {
+extractinsts() {
   for INSTTBZ2 in $INSTS; do
     ( cd "$BUILDDIR/cross-compiler-i686" || return "$?"
       tar xjvf ../../"$INSTTBZ2" || return "$?"

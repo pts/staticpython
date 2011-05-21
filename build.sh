@@ -2,38 +2,62 @@
 #
 # build.sh -- compile StaticPython from sources
 # by pts@fazekas.hu at Wed Aug 11 16:49:32 CEST 2010
+# Mac OS X support at Sat May 21 21:04:07 CEST 2011
 #
 # Example invocation: ./build.sh
 # Example invocation: ./compie.sh stackless
 # This script has been tested on Ubuntu Hardy, should work on any Linux system.
 #
 # TODO(pts): document: ar cr ../stackless2.7-static.build/cross-compiler-i686/lib/libevent_evhttp.a http.o listener.o bufferevent_sock.o
+#
+# To facilitate exit on error,
+#
+#   (true; false; true; false)
+#
+# has to be changed to
+#
+#   (true && false && true && false) || return "$?"  # in bash-3.1.17
+#   (true && false && true && false)  # in busybox sh
+#
+# for Mac OS X:
+#
+# TODO(pts): Implement stacklessco.
+# TODO(pts): Configure -lz  --> pyconfig.h HAVE_ZLIB_COPY=1 
+# TODO(pts): Verify `import sysconfig' on both Linux and Mac OS X.
+# TODO(pts): Get rid of -ldl.
+# TODO(pts): Get rid of -framework CoreFoundation.
+# TODO(pts): Use libintl.a, but without libiconv.a (too large, 1MB).
+# TODO(pts): Add -mtune=cpu-type and -march=cpu-type (with SSE).
 
 if true; then  # Make the shell script editable while it's executing.
 
 test "${0%/*}" != "$0" && cd "${0%/*}"
 
-# Make sure we fail unless weuse ./busybox for all non-built-in commands.
-export PATH=/dev/null
+UNAME=$(./busybox uname 2>/dev/null || uname || true)
 
-if test "$BASH_VERSION"; then
+if test "$NO_BUSYBOX" || test "$UNAME" = Darwin; then  # Darwin is Mac OS X
+  BUSYBOX=
+elif test "$BASH_VERSION"; then
   unset BASH_VERSION
   exec ./busybox sh -- "$0" "$@"
+else
+  BUSYBOX=./busybox
+  # Make sure we fail unless we use ./busybox for all non-built-in commands.
+  export PATH=/dev/null
+  set -e  # Abort on error.
+  test -d busybox.bin || ./busybox mkdir busybox.bin
+  for F in cp mv rm sleep touch mkdir tar expr sed awk ls pwd test cmp diff \
+           sort cat head tail chmod chown uname basename tr find grep ln; do
+    ./busybox rm -f busybox.bin/"$F"
+    ./busybox ln -s ../busybox busybox.bin/"$F"
+  done
+  ./busybox rm -f busybox.bin/make; ./busybox ln -s ../make busybox.bin/make
+  ./busybox rm -f busybox.bin/perl; ./busybox ln -s ../perl busybox.bin/perl
+  export PATH="$PWD/busybox.bin"
+  export SHELL="$PWD/busybox.bin/sh"
 fi
 
 set -e  # Abort on error.
-
-test -d busybox.bin || ./busybox mkdir busybox.bin
-for F in cp mv rm sleep touch mkdir tar expr sed awk ls pwd test cmp diff \
-         sort cat head tail chmod chown uname basename tr find grep ln; do
-  ./busybox rm -f busybox.bin/"$F"
-  ./busybox ln -s ../busybox busybox.bin/"$F"
-done
-# Good grep for configure.
-./busybox rm -f busybox.bin/make; ./busybox ln -s ../make busybox.bin/make
-./busybox rm -f busybox.bin/perl; ./busybox ln -s ../perl busybox.bin/perl
-export PATH="$PWD/busybox.bin"
-export SHELL="$PWD/busybox.bin/sh"
 
 # ---
 
@@ -57,7 +81,7 @@ fi
 
 if test $# = 0; then
   # Don't include betry here.
-  STEPS="initbuilddir extractinst configure patchsetup patchimport patchgetpath patchsqlite makeminipython patchsyncless patchgevent patchgeventmysql patchconcurrence patchpycrypto patchaloaes makepython buildlibzip buildtarget"
+  STEPS="initbuilddir builddeps configure patchsetup patchimport patchgetpath patchsqlite makeminipython patchsyncless patchgevent patchgeventmysql patchconcurrence patchpycrypto patchaloaes makepython buildlibzip buildtarget"
 else
   STEPS="$*"
 fi
@@ -70,10 +94,25 @@ fi
 
 BUILDDIR="$TARGET.build"
 PBUILDDIR="$PWD/$BUILDDIR"
-# ./configure uses $CC, $AR and $RANLIB to generate the Makefile
-export CC="$PBUILDDIR/cross-compiler-i686/bin/i686-gcc -static -fno-stack-protector"
-export AR="$PBUILDDIR/cross-compiler-i686/bin/i686-ar"
-export RANLIB="$PWD/$BUILDDIR/cross-compiler-i686/bin/i686-ranlib"
+
+# GNU Autoconf's ./configure uses $CC, $AR, $LDFLAGS and $RANLIB to generate
+# the Makefile.
+if test "$UNAME" = Darwin; then
+  # -march=i386 wouldn't work, it would disable SSE. So we use -m32.
+  export CC="gcc-mp-4.4 -m32 -static-libgcc -I$PBUILDDIR/build-include"
+  export AR=ar
+  export RANLIB=ranlib
+  export LDFLAGS="-L$PBUILDDIR/build-lib"
+
+  export STRIP=strip
+else
+  export CC="$PBUILDDIR/cross-compiler-i686/bin/i686-gcc -static -fno-stack-protector"
+  export AR="$PBUILDDIR/cross-compiler-i686/bin/i686-ar"
+  export RANLIB="$PBUILDDIR/cross-compiler-i686/bin/i686-ranlib"
+  export LDFLAGS=""
+
+  export STRIP="$PBUILDDIR/bin/i686-strip -s"
+fi
 
 echo "Running in directory: $PWD"
 echo "Building target: $TARGET"
@@ -81,63 +120,186 @@ echo "Building in directory: $BUILDDIR"
 echo "Using Python source distribution: $PYTHONTBZ2"
 echo "Will run steps: $STEPS"
 echo "Is adding coroutine libraries: $IS_CO"
+echo "Operating system UNAME: $UNAME"
 echo
 
 initbuilddir() {
   rm -rf "$BUILDDIR"
   mkdir "$BUILDDIR"
-  ( cd "$BUILDDIR" || exit "$?"
-    tar xjvf ../"$PYTHONTBZ2" || exit "$?"
-  ) || exit "$?"
-  ( cd "$BUILDDIR" || exit "$?"
-    mv */* . || exit "$?"
-  ) || exit "$?"
-  ( cd "$BUILDDIR" || exit "$?"
-    mkdir cross-compiler-i686
-    cd cross-compiler-i686
-    tar xjvf ../../gcxbase.inst.tbz2 || exit "$?"
-    tar xjvf ../../gcc.inst.tbz2 || exit "$?"
-    tar xjvf ../../gcxtool.inst.tbz2 || exit "$?"
-  ) || exit "$?"
-  ( cd "$BUILDDIR/Modules" || exit "$?"
+
+  if test "$UNAME" = Linux || test "$UNAME" = Darwin; then
+    :
+  else
+    set +x
+    echo "fatal: unsupported operating system: $UNAME" >&2
+    exit 2
+  fi
+
+  # Check the C compiler.
+  (echo '#include <stdio.h>'
+   echo 'main() { return!printf("Hello, World!\n"); }'
+  ) >"$BUILDDIR/hello.c"
+  if ! $CC -o "$BUILDDIR/hello" "$BUILDDIR/hello.c"; then
+    set +x
+    echo "fatal: the C compiler doesn't work" >&2
+    if test "$UNAME" = Darwin; then
+      echo "info: did you install MacPorts and run: sudo port install gcc44" >&2
+    fi
+    exit 2
+  fi
+  $STRIP "$BUILDDIR/hello"
+  local OUT="$("$BUILDDIR/hello")"
+  test "$?" = 0
+  test "$OUT" = "Hello, World!"
+  
+  ( cd "$BUILDDIR" || return "$?"
+    tar xjvf ../"$PYTHONTBZ2" || return "$?"
+  ) || return "$?"
+  ( cd "$BUILDDIR" || return "$?"
+    mv */* . || return "$?"
+  ) || return "$?"
+  ( cd "$BUILDDIR/Modules" || return "$?"
     tar xzvf ../../greenlet-0.3.1.tar.gz
-  ) || exit "$?"
+  ) || return "$?"
+  if test "$UNAME" = Darwin; then
+    mkdir "$BUILDDIR/build-include"
+    mkdir "$BUILDDIR/build-lib"
+  else
+    ( cd "$BUILDDIR" || return "$?"
+      mkdir cross-compiler-i686
+      cd cross-compiler-i686
+      tar xjvf ../../gcxbase.inst.tbz2 || return "$?"
+      tar xjvf ../../gcc.inst.tbz2 || return "$?"
+      tar xjvf ../../gcxtool.inst.tbz2 || return "$?"
+    ) || return "$?"
+  fi
+}
+
+initdeps() {
+  if test "$UNAME" = Darwin; then  # Mac OS X
+    builddeps
+  else  # Linux
+    extractinsts
+  fi
+}
+
+builddeps() {
+  buildlibbz2
+  buildlibreadline
+  buildlibsqlite3
+  buildlibz
+}
+
+buildlibbz2() {
+  ( cd "$BUILDDIR" || return "$?"
+    rm -rf bzip2-1.0.6 || return "$?"
+    tar xzvf ../bzip2-1.0.6.tar.gz || return "$?"
+    cd bzip2-1.0.6 || return "$?"
+    perl -pi~ -e 's@\s-g(?!\S)@@g, s@\s-O\d*(?!\S)@ -O3@g if s@^CFLAGS\s*=@CFLAGS = @' Makefile || return "$?"
+    make CC="$CC" || return "$?"
+    cp libbz2.a ../build-lib/libbz2-staticpython.a || return "$?"
+    cp bzlib.h ../build-include/ || return "$?"
+  ) || return "$?"
+}
+
+buildlibreadline() {
+  ( cd "$BUILDDIR" || return "$?"
+    rm -rf readline-5.2 || return "$?"
+    tar xzvf ../readline-5.2.tar.gz || return "$?"
+    cd readline-5.2 || return "$?"
+    ./configure --disable-shared || return "$?"
+    perl -pi~ -e 's@\s-g(?!\S)@@g, s@\s-O\d*(?!\S)@ -O2@g if s@^CFLAGS\s*=@CFLAGS = @' Makefile || return "$?"
+    make || return "$?"
+    # We could copy history.a, but Python doesn't need it.
+    cp libreadline.a ../build-lib/libreadline-staticpython.a || return "$?"
+    rm -rf ../build-include/readline || return "$?"
+    mkdir ../build-include/readline || return "$?"
+    cp rlstdc.h rltypedefs.h keymaps.h tilde.h readline.h history.h chardefs.h ../build-include/readline/ || return "$?"
+  ) || return "$?"
+}
+
+buildlibsqlite3() {
+  ( cd "$BUILDDIR" || return "$?"
+    rm -rf sqlite-amalgamation-3070603 || return "$?"
+    unzip ../sqlite-amalgamation-3070603.zip || return "$?"
+    cd sqlite-amalgamation-3070603 || return "$?"
+    $CC -c -O2 -DSQLITE_ENABLE_STAT2 -DSQLITE_ENABLE_FTS3 -DSQLITE_ENABLE_FTS4 -DSQLITE_ENABLE_RTREE -W -Wall sqlite3.c || return "$?"
+    $AR cr libsqlite3.a sqlite3.o || return "$?"
+    $RANLIB libsqlite3.a || return "$?"
+    cp libsqlite3.a ../build-lib/libsqlite3-staticpython.a || return "$?"
+    cp sqlite3.h ../build-include/ || return "$?"
+  ) || return "$?"
+}
+
+buildlibz() {
+  ( cd "$BUILDDIR" || return "$?"
+    rm -rf zlib-1.2.5 || return "$?"
+    tar xjvf ../zlib-1.2.5.tar.bz2 || return "$?"
+    cd zlib-1.2.5 || return "$?"
+    ./configure --static || return "$?"
+    perl -pi~ -e 's@\s-g(?!\S)@@g, s@\s-O\d*(?!\S)@ -O3@g if s@^CFLAGS\s*=@CFLAGS = @' Makefile || return "$?"
+    make || return "$?"
+    cp libz.a ../build-lib/libz-staticpython.a || return "$?"
+    cp zconf.h zlib.h ../build-include/ || return "$?"
+  ) || return "$?"
 }
 
 extractinst() {
   for INSTTBZ2 in $INSTS; do
-    ( cd "$BUILDDIR/cross-compiler-i686" || exit "$?"
-      tar xjvf ../../"$INSTTBZ2" || exit "$?"
-    ) || exit "$?"
+    ( cd "$BUILDDIR/cross-compiler-i686" || return "$?"
+      tar xjvf ../../"$INSTTBZ2" || return "$?"
+    ) || return "$?"
   done
 }
 
-# Remove dependeny on ASDLGEN
-#remove_asdlgen() {
-#}
-
 configure() {
-  ( cd "$BUILDDIR" || exit "$?"
+  ( cd "$BUILDDIR" || return "$?"
     # TODO(pts): Make sure x86 is detected (not x86_64).
     # This removal makes Python-ast.c not autogenerated. Autogeneration would
     # need a working Python binary, which we don't have yet.
     perl -pi -e '$_="" if /ASDLGEN/' Makefile.pre.in
-    ./configure --disable-shared --disable-ipv6 || exit "$?"
-    #remove_asdlgen
-  ) || exit "$?"
+    ./configure --disable-shared --disable-ipv6 || return "$?"
+  ) || return "$?"
+  fixmakefile
+}
+
+fixmakefile() {
+  ( cd "$BUILDDIR" || return "$?"
+    # `-framework CoreFoundation' is good to be removed on the Mac OS X, to
+    # prevent additional .dylib dependencies on
+    # /System//Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation
+    # .
+    perl -pi~ -e 's@\s-(?:ldl|framework\s+CoreFoundation)(?!\S)@@g if s@^LIBS\s*=@LIBS = @' Makefile || return "$?"
+    # CFLAGS already has -O2.
+    perl -pi~ -e 's@\s-(?:g|O\d*)(?!\S)@@g if s@^OPT\s*=@OPT = @' Makefile || return "$?"
+    perl -pi~ -e 's@\s-g(?!\S)@@g, s@\s-O\d*(?!\S)@ -O2@g if s@^CFLAGS\s*=@CFLAGS = @' Makefile || return "$?"
+  ) || return "$?"
 }
 
 patchsetup() {
   # This must be run after the configure step, because configure overwrites
   # Modules/Setup
   cp Modules.Setup.2.7.static "$BUILDDIR/Modules/Setup"
-  sleep 2  # Wait 2 seconds after the configure script creating Makefile.
-  touch "$BUILDDIR/Modules/Setup"
+  if test "$UNAME" = Darwin; then
+    # * /usr/lib/libncurses.5.dylib
+    # * _locale is disabled because -lintl needs -liconv, which is too large
+    #   (1MB)
+    # * spwd is disabled because the Mac OS X doesn't contain
+    #   /usr/include/shadow.h .
+    # * -lcrypt and -lm are not necessary in the Mac OS X, everything is in
+    #   the libc.
+    # * -lz, -lsqlite3, -lreadline and -lbz2 have to be converted to
+    #   -l...-staticpython so that out lib*-staticpython.a would be selected.
+    # * _multiprocessing/semaphore.c is needed.
+    perl -pi~ -e 's@\s-lncurses\S*@ -lncurses.5@g; s@^(?:_locale|spwd)(?!\S)@#@; s@\s-(?:lcrypt|lm)(?!\S)@@g; s@\s-(lz|lsqlite3|lreadline|lbz2)(?!\S)@ -$1-staticpython@g; s@^(_multiprocessing)(?!\S)@_multiprocessing _multiprocessing/semaphore.c@' "$BUILDDIR/Modules/Setup" || return "$?"
+  fi
+  sleep 2 || return "$?"  # Wait 2 seconds after the configure script creating Makefile.
+  touch "$BUILDDIR/Modules/Setup" || return "$?"
   # We need to run `make Makefile' to rebuild it using our Modules/Setup
-  ( cd "$BUILDDIR" || exit "$?"
-    make Makefile || exit "$?"
-    #remove_asdlgen || exit "$?"
-  ) || exit "$"
+  ( cd "$BUILDDIR" || return "$?"
+    make Makefile || return "$?"
+  ) || return "$?"
+  fixmakefile
 }
 
 patchimport() {
@@ -171,7 +333,7 @@ generate_loader_py() {
   local PY_MODNAME="$2"
   local PY_FILENAME="Lib/${PY_MODNAME//.//}.py"
   : Generating loader "$PY_FILENAME"
-  echo "import sys; import $CEXT_MODNAME; sys.modules[__name__] = $CEXT_MODNAME" >"$PY_FILENAME" || return "$?"
+  echo "import sys; import $CEXT_MODNAME; sys.modules[__name__] = $CEXT_MODNAME" >"$PY_FILENAME"
 }
 
 patch_and_copy_cext() {
@@ -191,15 +353,15 @@ patch_and_copy_cext() {
     # For PyCrypto.
     s@^[ \t]*(#[ \t]*define\s+MODULE_NAME\s+\S+)@#define MODULE_NAME $ENV{CEXT_MODNAME}@mg;
     s@^[ \t]*(#[ \t]*define\s+MODULE_NAME\s+\S+.*triple DES.*)@#define MODULE_NAME _Crypto_Cipher_DES3@mg;
-  ' || return "$?"
+  '
 }
 
 enable_module() {
   local CEXT_MODNAME="$1"
   export CEXT_MODNAME
   : Enabling module: "$CEXT_MODNAME"
-  grep -qE "^#?$CEXT_MODNAME " Modules/Setup || return "$?"
-  perl -0777 -pi -e 's@^#$ENV{CEXT_MODNAME} @$ENV{CEXT_MODNAME} @mg' Modules/Setup || return "$?"
+  grep -qE "^#?$CEXT_MODNAME " Modules/Setup
+  perl -0777 -pi -e 's@^#$ENV{CEXT_MODNAME} @$ENV{CEXT_MODNAME} @mg' Modules/Setup
 }
 
 patchsyncless() {
@@ -277,8 +439,9 @@ run_pyrexc() {
 #** Equivalent to zip -9r "$@"
 #** Usage: run_mkzip filename.zip file_or_dir ...
 run_mkzip() {
-  local PYTHON="$PBUILDDIR"/python
+  local PYTHON="$PBUILDDIR"/python.exe
   test -f "$PBUILDDIR"/minipython && PYTHON="$PBUILDDIR"/minipython
+  # python.exe is for the Mac OS X (case insensitive, vs Python/)
   PYTHONPATH="$PWD/Lib" "$PYTHON" -S -c 'if 1:
   import os
   import os.path
@@ -413,15 +576,25 @@ makeminipython() {
   test "$IS_CO" || return 0
   ( cd "$BUILDDIR" || return "$?"
     # TODO(pts): Disable co modules in Modules/Setup
-    make python || return "$?"
-    mv -f python minipython
-    cross-compiler-i686/bin/i686-strip -s minipython
+    if test "$UNAME" = Darwin; then
+      make python.exe || return "$?"
+      mv -f python.exe minipython || return "$?"
+    else
+      make python || return "$?"
+      mv -f python minipython || return "$?"
+    fi
+    $STRIP minipython || return "$?"
   ) || return "$?"
 }
 
 makepython() {
   ( cd "$BUILDDIR" || return "$?"
-    make python || return "$?"
+    if test "$UNAME" = Darwin; then
+      make python.exe || return "$?"
+    else
+      make python || return "$?"
+      ln -s python python.exe || return "$?"
+    fi
   ) || return "$?"
 }
 
@@ -431,29 +604,34 @@ buildlibzip() {
     IFS='
 '
     cd "$BUILDDIR" ||
-    (test -f xlib.zip && mv xlib.zip xlib.zip.old) || exit "$?"
-    rm -rf xlib || exit "$?"
-    cp -a Lib xlib || exit "$?"
-    rm -f $(find xlib -iname '*.pyc') || exit "$?"
+    (test -f xlib.zip && mv xlib.zip xlib.zip.old) || return "$?"
+    rm -rf xlib || return "$?"
+    cp -R Lib xlib || return "$?"
+    rm -f $(find xlib -iname '*.pyc') || return "$?"
     rm -f xlib/plat-*/regen
     rm -rf xlib/email/test xlib/bdddb xlib/ctypes xlib/distutils \
            xlib/idlelib xlib/lib-tk xlib/lib2to3 xlib/msilib \
            xlib/plat-aix* xlib/plat-atheos xlib/plat-beos* \
-           xlib/plat-darwin xlib/plat-freebsd* xlib/plat-irix* \
+           xlib/plat-freebsd* xlib/plat-irix* \
            xlib/plat-mac xlib/plat-netbsd* xlib/plat-next* \
            xlib/plat-os2* xlib/plat-riscos xlib/plat-sunos* \
-           xlib/plat-unixware xlib/test xlib/*.egg-info || exit "$?"
-    cp ../site.static.py xlib/site.py || exit "$?"
-    cd xlib || exit "$?"
-    rm -f *~ */*~ || exit "$?"
+           xlib/plat-unixware xlib/test xlib/*.egg-info || return "$?"
+    if test "$UNAME" = Darwin; then
+      rm -rf xlib/plat-linux2
+    else
+      rm -rf xlib/plat-darwin
+    fi
+    cp ../site.static.py xlib/site.py || return "$?"
+    cd xlib || return "$?"
+    rm -f *~ */*~ || return "$?"
     rm -f ../xlib.zip
-    run_mkzip ../xlib.zip * || exit "$?"
-  ) || exit "$?"
+    run_mkzip ../xlib.zip * || return "$?"
+  ) || return "$?"
 }
 
 buildtarget() {
-  cp "$BUILDDIR"/python "$BUILDDIR/$TARGET"
-  "$BUILDDIR"/cross-compiler-i686/bin/i686-strip -s "$BUILDDIR/$TARGET"
+  cp "$BUILDDIR"/python.exe "$BUILDDIR/$TARGET"
+  $STRIP "$BUILDDIR/$TARGET"
   cat "$BUILDDIR"/xlib.zip >>"$BUILDDIR/$TARGET"
   cp "$BUILDDIR/$TARGET" "$TARGET"
   ls -l "$TARGET"
@@ -469,7 +647,7 @@ betry() {
   export PYTHONPATH=bardir
   unset PYTHONHOME
   #unset PYTHONPATH
-  (cd be && ./sp) || exit "$?"
+  (cd be && ./sp) || return "$?"
 }
 
 for STEP in $STEPS; do

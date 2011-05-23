@@ -83,7 +83,7 @@ fi
 
 if test $# = 0; then
   # Don't include betry here.
-  STEPS="initbuilddir initdeps configure patchsetup patchimport patchgetpath patchsqlite makeminipython patchsyncless patchgevent patchgeventmysql patchconcurrence patchpycrypto patchaloaes fixmakefile makepython buildpythonlibzip buildtarget"
+  STEPS="initbuilddir initdeps configure patchsetup fixsetup patchimport patchgetpath patchsqlite makeminipython patchsyncless patchgevent patchgeventmysql patchconcurrence patchpycrypto patchaloaes fixsetup makepython buildpythonlibzip buildtarget"
 else
   STEPS="$*"
 fi
@@ -326,6 +326,11 @@ patchsetup() {
   # This must be run after the configure step, because configure overwrites
   # Modules/Setup
   cp Modules.Setup.2.7.static "$BUILDDIR/Modules/Setup"
+  # Please note that fixsetup has to be called now, partially because of
+  # fixing the Makefile.
+}
+
+fixsetup() {
   if test "$UNAME" = Darwin; then
     # * /usr/lib/libncurses.5.dylib
     # * _locale is disabled because -lintl needs -liconv, which is too large

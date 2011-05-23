@@ -89,7 +89,7 @@ else
 fi
 
 if test "$IS_CO"; then
-  INSTS="$INSTS_BASE libevent2-2.0.10.inst.tbz2"
+  INSTS="$INSTS_BASE libevent2-2.0.11.inst.tbz2"
 else
   INSTS="$INSTS_BASE"
 fi

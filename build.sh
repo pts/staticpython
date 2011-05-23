@@ -97,13 +97,14 @@ fi
 BUILDDIR="$TARGET.build"
 PBUILDDIR="$PWD/$BUILDDIR"
 
-# GNU Autoconf's ./configure uses $CC, $AR, $LDFLAGS and $RANLIB to generate
-# the Makefile.
+# GNU Autoconf's ./configure uses $CC, $LD, $AR, $LDFLAGS and $RANLIB to
+# generate the Makefile.
 if test "$UNAME" = Darwin; then
   # -march=i386 wouldn't work, it would disable SSE. So we use -m32.
   export CC="gcc-mp-4.4 -m32 -static-libgcc -I$PBUILDDIR/build-include"
   export AR=ar
   export RANLIB=ranlib
+  export LD=ld
   export LDFLAGS="-L$PBUILDDIR/build-lib"
 
   export STRIP=strip
@@ -111,6 +112,7 @@ else
   export CC="$PBUILDDIR/cross-compiler-i686/bin/i686-gcc -static -fno-stack-protector"
   export AR="$PBUILDDIR/cross-compiler-i686/bin/i686-ar"
   export RANLIB="$PBUILDDIR/cross-compiler-i686/bin/i686-ranlib"
+  export LD="$PBUILDDIR/cross-compiler-i686/bin/i686-ld"  # The ./configure script of libevent2 fails without $LD being set.
   export LDFLAGS=""
 
   export STRIP="$PBUILDDIR/cross-compiler-i686/bin/i686-strip -s"
@@ -150,6 +152,16 @@ initbuilddir() {
     ) || return "$?"
   fi
 
+  # Set up a fake config.guess for operating system and architecture detection.
+  #
+  # This is to make sure that we have i686 even on an x86_64 host for Linux.
+  if test "$UNAME" = Darwin; then
+    (echo '#!/bin/sh'; echo 'echo i386-apple-darwin9.8.0') >"$BUILDDIR/config.guess.fake" || return "$?"
+  else
+    (echo '#!/bin/sh'; echo 'echo i686-pc-linux-gnu') >"$BUILDDIR/config.guess.fake" || return "$?"
+  fi
+  chmod +x "$BUILDDIR/config.guess.fake"
+
   # Check the C compiler.
   (echo '#include <stdio.h>'
    echo 'main() { return!printf("Hello, World!\n"); }'
@@ -181,6 +193,8 @@ initbuilddir() {
   ( cd "$BUILDDIR/Modules" || return "$?"
     tar xzvf ../../greenlet-0.3.1.tar.gz
   ) || return "$?"
+
+  cp -f "$BUILDDIR/config.guess.fake" "$BUILDDIR/config.guess"
 }
 
 initdeps() {
@@ -259,11 +273,8 @@ buildlibevent2() {
     rm -rf libevent-2.0.11-stable || return "$?"
     tar xzvf ../libevent-2.0.11-stable.tar.gz || return "$?"
     cd libevent-2.0.11-stable || return "$?"
-    # Not needed, the output of config.guess is usually not used.
-    #if test "$UNAME" = Darwin; then
-    #  (echo '#!/bin/sh'; echo 'echo i386-apple-darwin9.8.0') >config.guess || return "$?"
-    #fi
     ./configure --disable-openssl --disable-debug-mode --disable-shared --disable-libevent-regress || return "$?"
+    cp -f ../config.guess.fake config.guess
     perl -pi~ -e 's@\s-g(?!\S)@@g, s@\s-O\d*(?!\S)@ -O2@g if s@^CFLAGS\s*=@CFLAGS = @' Makefile */Makefile || return "$?"
     make || return "$?"
     $AR cr  libevent_evhttp.a bufferevent_sock.o http.o listener.o || return "$?"

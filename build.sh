@@ -83,7 +83,7 @@ fi
 
 if test $# = 0; then
   # Don't include betry here.
-  STEPS="initbuilddir initdeps configure patchsetup patchimport patchgetpath patchsqlite makeminipython patchsyncless patchgevent patchgeventmysql patchconcurrence patchpycrypto patchaloaes makepython buildpythonlibzip buildtarget"
+  STEPS="initbuilddir initdeps configure patchsetup patchimport patchgetpath patchsqlite makeminipython patchsyncless patchgevent patchgeventmysql patchconcurrence patchpycrypto patchaloaes fixmakefile makepython buildpythonlibzip buildtarget"
 else
   STEPS="$*"
 fi

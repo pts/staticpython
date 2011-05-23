@@ -8,7 +8,6 @@
 # Example invocation: ./compie.sh stackless
 # This script has been tested on Ubuntu Hardy, should work on any Linux system.
 #
-# TODO(pts): document: ar cr ../stackless2.7-static.build/cross-compiler-i686/lib/libevent_evhttp.a http.o listener.o bufferevent_sock.o
 # TODO(pts): Build linux libs from source as well.
 #
 # To facilitate exit on error,
@@ -84,7 +83,7 @@ fi
 
 if test $# = 0; then
   # Don't include betry here.
-  STEPS="initbuilddir initdeps configure patchsetup patchimport patchgetpath patchsqlite makeminipython patchsyncless patchgevent patchgeventmysql patchconcurrence patchpycrypto patchaloaes makepython buildlibzip buildtarget"
+  STEPS="initbuilddir initdeps configure patchsetup patchimport patchgetpath patchsqlite makeminipython patchsyncless patchgevent patchgeventmysql patchconcurrence patchpycrypto patchaloaes makepython buildpythonlibzip buildtarget"
 else
   STEPS="$*"
 fi
@@ -197,6 +196,7 @@ builddeps() {
   buildlibreadline
   buildlibsqlite3
   buildlibz
+  buildlibevent2
 }
 
 buildlibbz2() {
@@ -253,6 +253,28 @@ buildlibz() {
   ) || return "$?"
 }
 
+buildlibevent2() {
+  test "$IS_CO" || return
+  ( cd "$BUILDDIR" || return "$?"
+    rm -rf libevent-2.0.11-stable || return "$?"
+    tar xzvf ../libevent-2.0.11-stable.tar.gz || return "$?"
+    cd libevent-2.0.11-stable || return "$?"
+    # Not needed, the output of config.guess is usually not used.
+    #if test "$UNAME" = Darwin; then
+    #  (echo '#!/bin/sh'; echo 'echo i386-apple-darwin9.8.0') >config.guess || return "$?"
+    #fi
+    ./configure --disable-openssl --disable-debug-mode --disable-shared --disable-libevent-regress || return "$?"
+    perl -pi~ -e 's@\s-g(?!\S)@@g, s@\s-O\d*(?!\S)@ -O2@g if s@^CFLAGS\s*=@CFLAGS = @' Makefile */Makefile || return "$?"
+    make || return "$?"
+    $AR cr  libevent_evhttp.a bufferevent_sock.o http.o listener.o || return "$?"
+    $RANLIB libevent_evhttp.a || return "$?"
+    cp .libs/libevent_core.a ../build-lib/libevent_core-staticpython.a || return "$?"
+    cp libevent_evhttp.a ../build-lib/libevent_evhttp-staticpython.a || return "$?"
+    mkdir ../build-include/event2 || return "$?"
+    cp include/event2/*.h ../build-include/event2/ || return "$?"
+  ) || return "$?"
+}
+
 extractinsts() {
   for INSTTBZ2 in $INSTS; do
     ( cd "$BUILDDIR/cross-compiler-i686" || return "$?"
@@ -304,7 +326,7 @@ patchsetup() {
     # * -lz, -lsqlite3, -lreadline and -lbz2 have to be converted to
     #   -l...-staticpython so that out lib*-staticpython.a would be selected.
     # * _multiprocessing/semaphore.c is needed.
-    perl -pi~ -e 's@\s-lncurses\S*@ -lncurses.5@g; s@^(?:_locale|spwd)(?!\S)@#@; s@\s-(?:lcrypt|lm)(?!\S)@@g; s@\s-(lz|lsqlite3|lreadline|lbz2)(?!\S)@ -$1-staticpython@g; s@^(_multiprocessing)(?!\S)@_multiprocessing _multiprocessing/semaphore.c@' "$BUILDDIR/Modules/Setup" || return "$?"
+    perl -pi~ -e 's@\s-lncurses\S*@ -lncurses.5@g; s@^(?:_locale|spwd)(?!\S)@#@; s@\s-(?:lcrypt|lm)(?!\S)@@g; s@\s-(lz|lsqlite3|lreadline|lbz2|levent_core|levent_evhttp)(?!\S)@ -$1-staticpython@g; s@^(_multiprocessing)(?!\S)@_multiprocessing _multiprocessing/semaphore.c@' "$BUILDDIR/Modules/Setup" || return "$?"
   fi
   sleep 2 || return "$?"  # Wait 2 seconds after the configure script creating Makefile.
   touch "$BUILDDIR/Modules/Setup" || return "$?"
@@ -381,8 +403,8 @@ patchsyncless() {
   test "$IS_CO" || return 0
   ( cd "$BUILDDIR" || return "$?"
     rm -rf syncless-* syncless.dir Lib/syncless Modules/syncless || return "$?"
-    tar xzvf ../syncless-0.20.tar.gz || return "$?"
-    mv syncless-0.20 syncless.dir || return "$?"
+    tar xzvf ../syncless-0.22.tar.gz || return "$?"
+    mv syncless-0.22 syncless.dir || return "$?"
     mkdir Lib/syncless Modules/syncless || return "$?"
     cp syncless.dir/syncless/*.py Lib/syncless/ || return "$?"
     generate_loader_py _syncless_coio syncless.coio || return "$?"
@@ -611,7 +633,7 @@ makepython() {
   ) || return "$?"
 }
 
-buildlibzip() {
+buildpythonlibzip() {
   # This step doesn't depend on makepython.
   ( set -ex
     IFS='
@@ -619,6 +641,8 @@ buildlibzip() {
     cd "$BUILDDIR" ||
     (test -f xlib.zip && mv xlib.zip xlib.zip.old) || return "$?"
     rm -rf xlib || return "$?"
+    # Compatibility note: `cp -a' works on Linux, but not on Mac OS X, so
+    # we use `cp -R' here which works on both.
     cp -R Lib xlib || return "$?"
     rm -f $(find xlib -iname '*.pyc') || return "$?"
     rm -f xlib/plat-*/regen

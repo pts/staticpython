@@ -268,7 +268,7 @@ buildlibz() {
 }
 
 buildlibevent2() {
-  test "$IS_CO" || return
+  test "$IS_CO" || return 0
   ( cd "$BUILDDIR" || return "$?"
     rm -rf libevent-2.0.11-stable || return "$?"
     tar xzvf ../libevent-2.0.11-stable.tar.gz || return "$?"

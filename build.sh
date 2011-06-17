@@ -420,8 +420,8 @@ patchsyncless() {
   test "$IS_CO" || return 0
   ( cd "$BUILDDIR" || return "$?"
     rm -rf syncless-* syncless.dir Lib/syncless Modules/syncless || return "$?"
-    tar xzvf ../syncless-0.22.tar.gz || return "$?"
-    mv syncless-0.22 syncless.dir || return "$?"
+    tar xzvf ../syncless-0.23.tar.gz || return "$?"
+    mv syncless-0.23 syncless.dir || return "$?"
     mkdir Lib/syncless Modules/syncless || return "$?"
     cp syncless.dir/syncless/*.py Lib/syncless/ || return "$?"
     generate_loader_py _syncless_coio syncless.coio || return "$?"
@@ -438,8 +438,8 @@ patchgevent() {
   test "$IS_CO" || return 0
   ( cd "$BUILDDIR" || return "$?"
     rm -rf gevent-* gevent.dir Lib/gevent Modules/gevent || return "$?"
-    tar xzvf ../gevent-0.13.2.tar.gz || return "$?"
-    mv gevent-0.13.2 gevent.dir || return "$?"
+    tar xzvf ../gevent-0.13.6.tar.gz || return "$?"
+    mv gevent-0.13.6 gevent.dir || return "$?"
     mkdir Lib/gevent Modules/gevent || return "$?"
     cp gevent.dir/gevent/*.py Lib/gevent/ || return "$?"
     rm -f gevent.dir/gevent/win32util.py || return "$?"

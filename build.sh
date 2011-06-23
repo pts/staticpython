@@ -6,6 +6,9 @@
 #
 # Example invocation: ./build.sh
 # Example invocation: ./compie.sh stackless
+# Example invocation: ./compie.sh stacklessco
+# Example invocation: ./compie.sh stacklessco usessl
+#
 # This script has been tested on Ubuntu Hardy, should work on any Linux system.
 #
 # TODO(pts): Build linux libs from source as well.
@@ -22,6 +25,7 @@
 #
 # for Mac OS X:
 #
+# TODO(pts): Make binaries identical upon recompilation.
 # TODO(pts): Implement stacklessco.
 # TODO(pts): Configure -lz  --> pyconfig.h HAVE_ZLIB_COPY=1 
 # TODO(pts): Verify `import sysconfig' on both Linux and Mac OS X.
@@ -66,35 +70,36 @@ set -e  # Abort on error.
 
 INSTS_BASE="bzip2-1.0.5.inst.tbz2 ncurses-5.6.inst.tbz2 readline-5.2.inst.tbz2 sqlite-3.7.0.1.inst.tbz2 zlib-1.2.3.3.inst.tbz2"
 
-if test "$1" = stackless; then
-  TARGET=stackless2.7-static
-  PYTHONTBZ2=stackless-271-export.tar.bz2
-  IS_CO=
-  shift
-elif test "$1" = stacklessco; then
-  TARGET=stacklessco2.7-static
-  PYTHONTBZ2=stackless-271-export.tar.bz2
-  IS_CO=1
-  shift
-else
-  TARGET=python2.7-static
-  PYTHONTBZ2=Python-2.7.1.tar.bz2
-  IS_CO=
-fi
-
-if test $# = 0; then
+STEPS=
+USE_SSL=
+TARGET=python2.7-static
+PYTHONTBZ2=Python-2.7.1.tar.bz2
+IS_CO=
+for ARG in "$@"; do 
+  if test "$ARG" = stackless; then
+    TARGET=stackless2.7-static
+    PYTHONTBZ2=stackless-271-export.tar.bz2
+    IS_CO=
+  elif test "$ARG" = stacklessco; then
+    TARGET=stacklessco2.7-static
+    PYTHONTBZ2=stackless-271-export.tar.bz2
+    IS_CO=1
+  elif test "$ARG" = python; then
+    TARGET=python2.7-static
+    PYTHONTBZ2=Python-2.7.1.tar.bz2
+    IS_CO=
+  elif test "$ARG" = usessl; then
+    USE_SSL=1
+  else
+    STEPS="$STEPS $ARG"
+  fi
+done
+if test -z "$STEPS"; then
   # Don't include betry here.
-  STEPS="initbuilddir initdeps configure patchsetup fixsetup patchimport patchgetpath patchsqlite makeminipython patchsyncless patchgevent patchgeventmysql patchconcurrence patchpycrypto patchaloaes fixsetup makepython buildpythonlibzip buildtarget"
-else
-  STEPS="$*"
+  STEPS="initbuilddir initdeps configure patchsetup fixsetup patchimport patchgetpath patchsqlite patchssl makeminipython patchsyncless patchgevent patchgeventmysql patchconcurrence patchpycrypto patchaloaes fixsetup makepython buildpythonlibzip buildtarget"
 fi
 
-if test "$IS_CO"; then
-  INSTS="$INSTS_BASE libevent2-2.0.11.inst.tbz2"
-else
-  INSTS="$INSTS_BASE"
-fi
-
+INSTS="$INSTS_BASE"
 BUILDDIR="$TARGET.build"
 PBUILDDIR="$PWD/$BUILDDIR"
 
@@ -125,6 +130,7 @@ echo "Building in directory: $BUILDDIR"
 echo "Using Python source distribution: $PYTHONTBZ2"
 echo "Will run steps: $STEPS"
 echo "Is adding coroutine libraries: $IS_CO"
+echo "Is using OpenSSL for SSL functionality: $USE_SSL"
 echo "Operating system UNAME: $UNAME"
 echo
 
@@ -207,10 +213,11 @@ initdeps() {
 }
 
 builddeps() {
+  buildlibz
+  buildlibssl
   buildlibbz2
   buildlibreadline
   buildlibsqlite3
-  buildlibz
   buildlibevent2
 }
 
@@ -268,16 +275,46 @@ buildlibz() {
   ) || return "$?"
 }
 
+buildlibssl() {
+  test "$USE_SSL" || return 0
+  ( cd "$BUILDDIR" || return "$?"
+    rm -rf openssl-0.9.8r.tar.gz || return "$?"
+    tar xjvf ../openssl-0.9.8r.tar.gz || return "$?"
+    cd openssl-0.9.8r || return "$?"
+    if test "$UNAME" = Linux; then
+      ./Configure no-shared linux-generic32 || return "$?"
+    else
+      ./Configure no-shared darwin-i386-cc || return "$?"  # TODO(pts): Test this.
+    fi
+    perl -pi~ -e 's@\s-g(?!\S)@@g, s@\s-O\d*(?!\S)@ -O2@g, s@\s-D(DSO_DLFCN|HAVE_DLFCN_H)\S*@@g if s@^CFLAG\s*=\s*@CFLAG = @' Makefile || return "$?"
+    make build_libs || return "$?"
+    cp libssl.a ../build-lib/libssl-staticpython.a || return "$?"
+    cp libcrypto.a ../build-lib/libcrypto-staticpython.a || return "$?"
+    mkdir ../build-include/openssl || return "$?"
+    cp include/openssl/*.h ../build-include/openssl/ || return "$?"
+  ) || return "$?"
+}
+
 buildlibevent2() {
   test "$IS_CO" || return 0
   ( cd "$BUILDDIR" || return "$?"
     rm -rf libevent-2.0.11-stable || return "$?"
+    rm -rf build-include/event2 || return "$?"
+    rm -rf build-lib/libevent* || return "$?"
     tar xzvf ../libevent-2.0.11-stable.tar.gz || return "$?"
     cd libevent-2.0.11-stable || return "$?"
-    ./configure --disable-openssl --disable-debug-mode --disable-shared --disable-libevent-regress || return "$?"
+    local SSL_FLAGS=--disable-openssl
+    if test "$USE_SSL"; then
+      SSL_FLAGS=--enable-openssl
+      perl -pi~ -e 's@^for ac_lib in \x27\x27 ssl;@for ac_lib in \x27\x27 \x27ssl-staticpython -lcrypto-staticpython\x27;@' configure || return "$?"
+    fi
+    ./configure $SSL_FLAGS --disable-debug-mode --disable-shared --disable-libevent-regress || return "$?"
+    if test "$USE_SSL"; then
+      grep '^#define HAVE_OPENSSL 1$' config.h || return "$?"
+    fi
     cp -f ../config.guess.fake config.guess
     perl -pi~ -e 's@\s-g(?!\S)@@g, s@\s-O\d*(?!\S)@ -O2@g if s@^CFLAGS\s*=@CFLAGS = @' Makefile */Makefile || return "$?"
-    make || return "$?"
+    make ./include/event2/event-config.h libevent_core.la libevent.la || return "$?"
     $AR cr  libevent_evhttp.a bufferevent_sock.o http.o listener.o || return "$?"
     $RANLIB libevent_evhttp.a || return "$?"
     cp .libs/libevent_core.a ../build-lib/libevent_core-staticpython.a || return "$?"
@@ -293,6 +330,13 @@ extractinsts() {
       tar xjvf ../../"$INSTTBZ2" || return "$?"
     ) || return "$?"
   done
+  # These symlinks are needed for the build commands below on Linux.
+  if test "$UNAME" = Linux; then
+    ln -s cross-compiler-i686/lib     "$BUILDDIR/build-lib"
+    ln -s cross-compiler-i686/include "$BUILDDIR/build-include"
+  fi
+  buildlibssl     # Needs zlib if libssl is enabled.
+  buildlibevent2  # Needs libssl if libssl is enabled.
 }
 
 configure() {
@@ -343,8 +387,9 @@ fixsetup() {
     # * -lz, -lsqlite3, -lreadline and -lbz2 have to be converted to
     #   -l...-staticpython so that out lib*-staticpython.a would be selected.
     # * _multiprocessing/semaphore.c is needed.
-    perl -pi~ -e 's@\s-lncurses\S*@ -lncurses.5@g; s@^(?:_locale|spwd)(?!\S)@#@; s@\s-(?:lcrypt|lm)(?!\S)@@g; s@\s-(lz|lsqlite3|lreadline|lbz2|levent_core|levent_evhttp)(?!\S)@ -$1-staticpython@g; s@^(_multiprocessing)(?!\S)@_multiprocessing _multiprocessing/semaphore.c@' "$BUILDDIR/Modules/Setup" || return "$?"
+    perl -pi~ -e 's@\s-lncurses\S*@ -lncurses.5@g; s@^(?:_locale|spwd)(?!\S)@#@; s@\s-(?:lcrypt|lm)(?!\S)@@g; s@\s-(lz|lsqlite3|lreadline|lbz2)(?!\S)@ -$1-staticpython@g; s@^(_multiprocessing)(?!\S)@_multiprocessing _multiprocessing/semaphore.c@' "$BUILDDIR/Modules/Setup" || return "$?"
   fi
+  perl -pi~ -e 's@\s-(levent_core|levent_evhttp)(?!\S)@ -$1-staticpython@g' "$BUILDDIR/Modules/Setup" || return "$?"
   sleep 2 || return "$?"  # Wait 2 seconds after the configure script creating Makefile.
   touch "$BUILDDIR/Modules/Setup" || return "$?"
   # We need to run `make Makefile' to rebuild it using our Modules/Setup
@@ -414,6 +459,13 @@ enable_module() {
   : Enabling module: "$CEXT_MODNAME"
   grep -qE "^#?$CEXT_MODNAME " Modules/Setup
   perl -0777 -pi -e 's@^#$ENV{CEXT_MODNAME} @$ENV{CEXT_MODNAME} @mg' Modules/Setup
+}
+
+patchssl() {
+  test "$USE_SSL" || return 0
+  ( cd "$BUILDDIR" || return "$?"
+    enable_module _ssl || return "$?"
+  ) || return "$?"
 }
 
 patchsyncless() {
@@ -761,7 +813,7 @@ betry() {
 for STEP in $STEPS; do
   echo "Running step: $STEP"
   set -ex
-  $STEP
+  $STEP || exit "$?"
   set +ex
 done
 echo "OK running steps: $STEPS"

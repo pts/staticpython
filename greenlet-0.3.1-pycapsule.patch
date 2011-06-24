@@ -1,0 +1,95 @@
+https://bitbucket.org/snaury/greenlet/changeset/f61fffb6feeb
+
+--- greenlet-0.3.1.orig/greenlet.h	2010-04-05 22:29:13.000000000 +0200
++++ greenlet-0.3.1/greenlet.h	2011-06-24 12:33:29.000000000 +0200
+@@ -24,20 +24,24 @@
+ 	struct _frame* top_frame;
+ 	int recursion_depth;
+ 	PyObject* weakreflist;
+ } PyGreenlet;
+ 
+ #define PyGreenlet_Check(op)      PyObject_TypeCheck(op, &PyGreenlet_Type)
+ #define PyGreenlet_STARTED(op)    (((PyGreenlet*)(op))->stack_stop != NULL)
+ #define PyGreenlet_ACTIVE(op)     (((PyGreenlet*)(op))->stack_start != NULL)
+ #define PyGreenlet_GET_PARENT(op) (((PyGreenlet*)(op))->parent)
+ 
++#if (PY_MAJOR_VERSION == 2 && PY_MINOR_VERSION >= 7) || (PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION >= 1) || PY_MAJOR_VERSION > 3
++#define GREENLET_USE_PYCAPSULE
++#endif
++
+ /* C API functions */
+ 
+ /* Total number of symbols that are exported */
+ #define PyGreenlet_API_pointers  8
+ 
+ #define PyGreenlet_Type_NUM       0
+ #define PyExc_GreenletError_NUM   1
+ #define PyExc_GreenletExit_NUM    2
+ 
+ #define PyGreenlet_New_NUM        3
+@@ -101,31 +105,38 @@
+ /*
+  * PyGreenlet_SetParent(PyObject *greenlet, PyObject *new_parent)
+  *
+  * g.parent = new_parent
+  */
+ #define PyGreenlet_SetParent \
+ 	(* (PyObject * (*)(PyGreenlet *greenlet, PyGreenlet *nparent)) \
+ 	 _PyGreenlet_API[PyGreenlet_SetParent_NUM])
+ 
+ /* Macro that imports greenlet and initializes C API */
++#ifdef GREENLET_USE_PYCAPSULE
++define PyGreenlet_Import() \
++{ \
++	_PyGreenlet_API = (void**)PyCapsule_Import("greenlet._C_API", 0); \
++}
++#else
+ #define PyGreenlet_Import() \
+ { \
+ 	PyObject *module = PyImport_ImportModule("greenlet"); \
+ 	if (module != NULL) { \
+ 		PyObject *c_api_object = PyObject_GetAttrString( \
+ 			module, "_C_API"); \
+ 		if (c_api_object != NULL && PyCObject_Check(c_api_object)) { \
+ 			_PyGreenlet_API = \
+ 				(void **) PyCObject_AsVoidPtr(c_api_object); \
+ 			Py_DECREF(c_api_object); \
+ 		} \
+ 		Py_DECREF(module); \
+ 	} \
+ }
++#endif
+ 
+ #endif /* GREENLET_MODULE */
+ 
+ #ifdef __cplusplus
+ }
+ #endif
+ #endif /* !Py_GREENLETOBJECT_H */
+--- greenlet-0.3.1.orig/greenlet.c	2010-04-05 23:24:25.000000000 +0200
++++ greenlet-0.3.1/greenlet.c	2011-06-24 12:32:12.000000000 +0200
+@@ -1260,20 +1260,24 @@
+ 
+ 	/* methods */
+ 	_PyGreenlet_API[PyGreenlet_New_NUM] = (void *) PyGreenlet_New;
+ 	_PyGreenlet_API[PyGreenlet_GetCurrent_NUM] =
+ 		(void *) PyGreenlet_GetCurrent;
+ 	_PyGreenlet_API[PyGreenlet_Throw_NUM] = (void *) PyGreenlet_Throw;
+ 	_PyGreenlet_API[PyGreenlet_Switch_NUM] = (void *) PyGreenlet_Switch;
+ 	_PyGreenlet_API[PyGreenlet_SetParent_NUM] =
+ 		(void *) PyGreenlet_SetParent;
+ 
++#ifdef GREENLET_USE_PYCAPSULE
++	c_api_object = PyCapsule_New((void *) _PyGreenlet_API, "greenlet._C_API", NULL);
++#else
+ 	c_api_object = PyCObject_FromVoidPtr((void *) _PyGreenlet_API, NULL);
++#endif
+ 	if (c_api_object != NULL)
+ 	{
+ 		PyModule_AddObject(m, "_C_API", c_api_object);
+ 	}
+ 
+ #if PY_MAJOR_VERSION >= 3
+ 	return m;
+ #endif
+ }

@@ -181,6 +181,8 @@ itertools itertoolsmodule.c	# Functions creating iterators for efficient looping
 strop stropmodule.c		# String manipulations
 _functools _functoolsmodule.c	# Tools for working with functions and callable objects
 _elementtree -I$(srcdir)/Modules/expat -DHAVE_EXPAT_CONFIG_H -DUSE_PYEXPAT_CAPI _elementtree.c	# elementtree accelerator
+# Disabled because _pickle and similarly named modules are missing.
+# cPickle is already enabled.
 #_pickle _pickle.c	# pickle accelerator
 datetime datetimemodule.c	# date/time type
 _bisect _bisectmodule.c	# Bisection algorithms
@@ -489,7 +491,7 @@ _codecs_kr cjkcodecs/_codecs_kr.c
 _codecs_tw cjkcodecs/_codecs_tw.c
 
 # Example -- included for reference only:
-# xx xxmodule.c
+#xx xxmodule.c
 
 # Another example -- the 'xxsubtype' module shows C-level subtyping in action
 #xxsubtype xxsubtype.c

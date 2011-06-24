@@ -5,9 +5,12 @@
 # Mac OS X support at Sat May 21 21:04:07 CEST 2011
 #
 # Example invocation: ./build.sh
-# Example invocation: ./compie.sh stackless
-# Example invocation: ./compie.sh stacklessco
-# Example invocation: ./compie.sh stacklessco usessl
+# Example invocation: ./build.sh stackless
+# Example invocation: ./build.sh stacklessco
+# Example invocation: ./build.sh stacklessco usessl
+# Example invocation: ./build.sh python3.2
+# Example invocation: ./build.sh stackless3.2
+# Example invocation: ./build.sh stacklessxl3.2
 #
 # This script has been tested on Ubuntu Hardy, should work on any Linux system.
 #
@@ -35,12 +38,17 @@
 # TODO(pts): Add -mtune=cpu-type and -march=cpu-type (with SSE).
 # TODO(pts): Test if hard switching works on both Linux and the Mac.
 #            --enable-stacklessfewerregisters .
+# TODO(pts): Make zipimport keep the .zip file open. (it closes it in Python
+#            3.2.)
 
 if true; then  # Make the shell script editable while it's executing.
 
 test "${0%/*}" != "$0" && cd "${0%/*}"
 
 UNAME=$(./busybox uname 2>/dev/null || uname || true)
+
+# To provide a uniform build environment
+unset PYTHONPATH PYTHONSTARTUP PYTHONHOME PYTHONCASEOK PYTHONIOENCODING
 
 if test "$NO_BUSYBOX" || test "$UNAME" = Darwin; then  # Darwin is Mac OS X
   BUSYBOX=
@@ -54,6 +62,7 @@ else
   set -e  # Abort on error.
   test -d busybox.bin || ./busybox mkdir busybox.bin
   for F in cp mv rm sleep touch mkdir tar expr sed awk ls pwd test cmp diff \
+           patch \
            sort cat head tail chmod chown uname basename tr find grep ln; do
     ./busybox rm -f busybox.bin/"$F"
     ./busybox ln -s ../busybox busybox.bin/"$F"
@@ -75,21 +84,48 @@ USE_SSL=
 TARGET=python2.7-static
 PYTHONTBZ2=Python-2.7.1.tar.bz2
 IS_CO=
+IS_PY3=
 for ARG in "$@"; do 
-  if test "$ARG" = stackless; then
+  if test "$ARG" = stackless || test "$ARG" = stackless2.7; then
     TARGET=stackless2.7-static
     PYTHONTBZ2=stackless-271-export.tar.bz2
     IS_CO=
-  elif test "$ARG" = stacklessco; then
+    IS_PY3=
+    USE_SSL=
+  elif test "$ARG" = stacklessco || test "$ARG" = stacklessco2.7; then
     TARGET=stacklessco2.7-static
     PYTHONTBZ2=stackless-271-export.tar.bz2
     IS_CO=1
-  elif test "$ARG" = python; then
+    ISP_PY3=
+    USE_SSL=1
+  elif test "$ARG" = python || test "$ARG" = python2.7; then
     TARGET=python2.7-static
     PYTHONTBZ2=Python-2.7.1.tar.bz2
     IS_CO=
+    IS_PY3=
+    USE_SSL=
+  elif test "$ARG" = python3.2; then
+    TARGET=python3.2-static
+    PYTHONTBZ2=Python-3.2.tar.bz2
+    IS_CO=
+    IS_PY3=1
+    USE_SSL=
+  elif test "$ARG" = stackless3.2; then
+    TARGET=stackless3.2-static
+    PYTHONTBZ2=stackless-32-export.tar.bz2
+    IS_CO=
+    IS_PY3=1
+    USE_SSL=
+  elif test "$ARG" = stacklessxl3.2; then
+    TARGET=stacklessxl3.2-static
+    PYTHONTBZ2=stackless-32-export.tar.bz2
+    IS_CO=
+    IS_PY3=1
+    USE_SSL=1
   elif test "$ARG" = usessl; then
     USE_SSL=1
+  elif test "$ARG" = nossl; then
+    USE_SSL=
   else
     STEPS="$STEPS $ARG"
   fi
@@ -192,13 +228,18 @@ initbuilddir() {
   ( cd "$BUILDDIR" || return "$?"
     if test -d Python-*; then
       mv Python-*/* . || return "$?"
-    fi
-    if test -d stackless-*; then
+    elif test -d python-*; then
+      mv python-*/* . || return "$?"
+    elif test -d stackless-*; then
       mv stackless-*/* . || return "$?"
     fi
   ) || return "$?"
   ( cd "$BUILDDIR/Modules" || return "$?"
     tar xzvf ../../greenlet-0.3.1.tar.gz
+    if test "$IS_PY3"; then
+      # TODO(pts): Copy patch(1) this to the Mac OS X chroot.
+      patch -p0 <../../greenlet-0.3.1-pycapsule.patch
+    fi
   ) || return "$?"
 
   cp -f "$BUILDDIR/config.guess.fake" "$BUILDDIR/config.guess"
@@ -361,16 +402,30 @@ fixmakefile() {
     # /System//Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation
     # .
     perl -pi~ -e 's@\s-(?:ldl|framework\s+CoreFoundation)(?!\S)@@g if s@^LIBS\s*=@LIBS = @' Makefile || return "$?"
-    # CFLAGS already has -O2.
-    perl -pi~ -e 's@\s-(?:g|O\d*)(?!\S)@@g if s@^OPT\s*=@OPT = @' Makefile || return "$?"
-    perl -pi~ -e 's@\s-g(?!\S)@@g, s@\s-O\d*(?!\S)@ -O2@g if s@^CFLAGS\s*=@CFLAGS = @' Makefile || return "$?"
+    # Remove -O... and -g from CFLAGS and OPT, and add -O2 to OPT. Please note
+    # that Python 3.2 doesn't have CFLAGS at all.
+    perl -pi~ -e 's@\s-(?:g|O\d*)(?!\S)@@g, s@$@ -O2@ if s@^OPT\s*=@OPT = @' Makefile || return "$?"
+    perl -pi~ -e 's@\s-(?:g|O\d*)(?!\S)@@g, s@$@ -O2@ if s@^SLPFLAGS\s*=@SLPFLAGS = @' Makefile || return "$?"
+    perl -pi~ -e 's@\s-g(?!\S)@@g, s@\s-O\d*(?!\S)@@g if s@^CFLAGS\s*=@CFLAGS = @' Makefile || return "$?"
+    if ! grep '@SLPFLAGS@' Makefile; then
+      :
+    elif test "$UNAME" = Darwin; then
+      # Fix for Stackless 3.2.
+      perl -pi~ -e 's~\@SLPFLAGS\@~-fomit-frame-pointer -O2~g' Makefile || return "$?"
+    else
+      perl -pi~ -e 's~\@SLPFLAGS\@~-fno-omit-frame-pointer -O2~g' Makefile || return "$?"
+    fi
   ) || return "$?"
 }
 
 patchsetup() {
   # This must be run after the configure step, because configure overwrites
   # Modules/Setup
-  cp Modules.Setup.2.7.static "$BUILDDIR/Modules/Setup"
+  if test "$IS_PY3"; then
+    cp Modules.Setup.3.2.static "$BUILDDIR/Modules/Setup"
+  else
+    cp Modules.Setup.2.7.static "$BUILDDIR/Modules/Setup"
+  fi
   # Please note that fixsetup has to be called now, partially because of
   # fixing the Makefile.
 }
@@ -397,6 +452,12 @@ fixsetup() {
     make Makefile || return "$?"
   ) || return "$?"
   fixmakefile
+  if test "$IS_PY3"; then
+    ( cd "$BUILDDIR" || return "$?"
+      grep '^_thread ' Modules/Setup.config
+      grep 'signal' Modules/Setup.config
+    ) || return "$?"
+  fi
 }
 
 patchimport() {
@@ -409,7 +470,11 @@ patchgetpath() {
   # TODO(pts): Make sure that the source string is there for patching.
   perl -pi~ -0777 -e 's@\s+static\s+void\s+calculate_path(?!   )\s*\(\s*void\s*\)\s*{@\n\nstatic void calculate_path(void);  /* StaticPython */\nstatic void calculate_path_not(void) {@g' "$BUILDDIR"/Modules/getpath.c
   if ! grep -q StaticPython-appended "$BUILDDIR/Modules/getpath.c"; then
-    cat calculate_path.static.c >>"$BUILDDIR/Modules/getpath.c"
+    if test "$IS_PY3"; then
+      cat calculate_path.3.2.c >>"$BUILDDIR/Modules/getpath.c"
+    else
+      cat calculate_path.2.7.c >>"$BUILDDIR/Modules/getpath.c"
+    fi
   fi
 }
 
@@ -465,6 +530,9 @@ patchssl() {
   test "$USE_SSL" || return 0
   ( cd "$BUILDDIR" || return "$?"
     enable_module _ssl || return "$?"
+    if test "$IS_PY3"; then
+      enable_module _hashlib || return "$?"
+    fi
   ) || return "$?"
 }
 
@@ -472,8 +540,8 @@ patchsyncless() {
   test "$IS_CO" || return 0
   ( cd "$BUILDDIR" || return "$?"
     rm -rf syncless-* syncless.dir Lib/syncless Modules/syncless || return "$?"
-    tar xzvf ../syncless-0.23.tar.gz || return "$?"
-    mv syncless-0.23 syncless.dir || return "$?"
+    tar xzvf ../syncless-0.24.tar.gz || return "$?"
+    mv syncless-0.24 syncless.dir || return "$?"
     mkdir Lib/syncless Modules/syncless || return "$?"
     cp syncless.dir/syncless/*.py Lib/syncless/ || return "$?"
     generate_loader_py _syncless_coio syncless.coio || return "$?"
@@ -537,7 +605,7 @@ patchgeventmysql() {
 }
 
 run_pyrexc() {
-  PYTHONPATH="$PWD/Lib:$PWD/pyrex.dir" "$PBUILDDIR"/minipython -S -W ignore::DeprecationWarning -c "from Pyrex.Compiler.Main import main; main(command_line=1)" "$@"
+  PYTHONPATH="$PBUILDDIR/Lib:$PWD/pyrex.dir" "$PBUILDDIR"/minipython -S -W ignore::DeprecationWarning -c "from Pyrex.Compiler.Main import main; main(command_line=1)" "$@"
 }
 
 #** Equivalent to zip -9r "$@"
@@ -546,7 +614,7 @@ run_mkzip() {
   local PYTHON="$PBUILDDIR"/python.exe
   test -f "$PBUILDDIR"/minipython && PYTHON="$PBUILDDIR"/minipython
   # python.exe is for the Mac OS X (case insensitive, vs Python/)
-  PYTHONPATH="$PWD/Lib" "$PYTHON" -S -c 'if 1:
+  PYTHONPATH="$PBUILDDIR/Lib" "$PYTHON" -S -c 'if 1:
   import os
   import os.path
   import stat
@@ -697,6 +765,7 @@ makepython() {
       make python.exe || return "$?"
     else
       make python || return "$?"
+      rm -f python.exe || return "$?"
       ln -s python python.exe || return "$?"
     fi
   ) || return "$?"
@@ -727,7 +796,11 @@ buildpythonlibzip() {
     else
       rm -rf xlib/plat-darwin
     fi
-    cp ../site.static.py xlib/site.py || return "$?"
+    if test "$IS_PY3"; then
+      cp ../site.3.2.py xlib/site.py || return "$?"
+    else
+      cp ../site.2.7.py xlib/site.py || return "$?"
+    fi
     cd xlib || return "$?"
     rm -f *~ */*~ || return "$?"
     rm -f ../xlib.zip

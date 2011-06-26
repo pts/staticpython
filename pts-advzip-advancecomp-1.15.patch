@@ -1,0 +1,26 @@
+--- advancecomp-1.15/rezip.cc.orig	2011-06-26 13:17:03.000000000 +0200
++++ advancecomp-1.15/rezip.cc	2011-06-26 13:35:57.000000000 +0200
+@@ -371,21 +371,22 @@
+ 		unsigned char* data = (unsigned char*)operator new(st.st_size);
+ 
+ 		try {
+ 			if (!quiet)
+ 				cout << file << endl;
+ 
+ 			FILE* f = fopen(file.c_str(), "rb");
+ 			if (!f)
+ 				throw error() << "Failed open for reading file " << file;
+ 
+-			if (fread(data, st.st_size, 1, f)!=1)
++/**** pts ****/ /* make it store empty files */
++			if (st.st_size > 0 && fread(data, st.st_size, 1, f)!=1)
+ 				throw error() << "Failed read file " << file;
+ 
+ 			fclose(f);
+ 
+ 			zip::iterator i = z.insert_uncompressed(common, data, st.st_size, crc32(0, (unsigned char*)data, st.st_size), st.st_mtime, false);
+ 
+ 			if (level != shrink_none)
+ 				i->shrink(standard, level);
+ 		} catch (...) {
+ 			operator delete(data);

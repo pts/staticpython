@@ -9,7 +9,7 @@ static void calculate_path   (void) {
     char *rtpypath = Py_GETENV("PYTHONPATH");
     char *path = getenv("PATH");
     char *prog = Py_GetProgramName();
-    static char zip_path[] = "/proc/self/exe";
+    static char proc_exe_path[] = "/proc/self/exe";
     char *xzip_path;
     char *buf;
 
@@ -51,12 +51,12 @@ static void calculate_path   (void) {
             absolutize(progpath);
 
     /**** pts ****/
-    { int fd = open(zip_path, O_RDONLY);
+    { int fd = open(proc_exe_path, O_RDONLY);
       /* fprintf(stderr, "progpath=(%s)\n", progpath); */
       if (fd < 0) {  /* If /proc is not avaialbe, e.g. in chroot */
         xzip_path = progpath;  /* Use argv[0] for the .zip filename */
       } else {
-        xzip_path = zip_path;
+        xzip_path = proc_exe_path;
         close(fd);
       }
     }

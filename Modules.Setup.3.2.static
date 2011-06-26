@@ -199,10 +199,10 @@ _socket socketmodule.c
 
 # Socket module helper for SSL support; you must comment out the other
 # socket line above, and possibly edit the SSL variable:
-#SSL=/usr/local/ssl
-#_ssl _ssl.c \
-#	-DUSE_SSL -I$(SSL)/include -I$(SSL)/include/openssl \
-#	-L$(SSL)/lib -lssl -lcrypto
+#not: SSL=/usr/local/ssl
+#not: _ssl _ssl.c \
+#not:	-DUSE_SSL -I$(SSL)/include -I$(SSL)/include/openssl \
+#not:	-L$(SSL)/lib -lssl -lcrypto
 
 # The crypt module is now disabled by default because it breaks builds
 # on many systems (where -lcrypt is needed), e.g. Linux (I believe).
@@ -390,7 +390,6 @@ _codecs_tw cjkcodecs/_codecs_tw.c
 # **** pts **** standard
 _multiprocessing _multiprocessing/multiprocessing.c _multiprocessing/socket_connection.c
 _sqlite3 _sqlite/cache.c _sqlite/connection.c _sqlite/cursor.c _sqlite/microprotocols.c _sqlite/module.c _sqlite/prepare_protocol.c _sqlite/row.c _sqlite/statement.c _sqlite/util.c -DSQLITE_OMIT_LOAD_EXTENSION -lsqlite3
-_heapq _heapqmodule.c
 _json _json.c
 _lsprof _lsprof.c rotatingtree.c
 bz2 bz2module.c -lbz2

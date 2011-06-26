@@ -8,6 +8,10 @@ import sys
 import os
 import __builtin__
 
+USER_BASE = ''
+USER_SITE = ''
+ENABLE_USER_SITE = None
+
 def setquit():
     """Define new builtins 'quit' and 'exit'.
 

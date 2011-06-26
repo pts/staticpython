@@ -11,7 +11,7 @@ static void calculate_path   (void) {
     char *_path = getenv("PATH");
     wchar_t pathbuf[MAXPATHLEN + 1];
     wchar_t *prog = Py_GetProgramName();
-    static wchar_t zip_path[] = L"/proc/self/exe";
+    static wchar_t proc_exe_path[] = L"/proc/self/exe";
     wchar_t *xzip_path;
     wchar_t *buf;
 
@@ -60,12 +60,12 @@ static void calculate_path   (void) {
             absolutize(progpath);
 
     /**** pts ****/
-    { FILE *f = _Py_wfopen(zip_path, "rb");
+    { FILE *f = _Py_wfopen(proc_exe_path, L"rb");
       /* fprintf(stderr, "progpath=(%s)\n", progpath); */
       if (f == NULL) {  /* If /proc is not avaialbe, e.g. in chroot */
         xzip_path = progpath;  /* Use argv[0] for the .zip filename */
       } else {
-        xzip_path = zip_path;
+        xzip_path = proc_exe_path;
         fclose(f);
       }
     }

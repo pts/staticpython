@@ -9,6 +9,10 @@ import os
 import sys
 import traceback
 
+USER_BASE = ''
+USER_SITE = ''
+ENABLE_USER_SITE = None
+
 def setquit():
     """Define new builtins 'quit' and 'exit'.
 

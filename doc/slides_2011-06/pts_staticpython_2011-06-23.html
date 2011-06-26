@@ -1,0 +1,1082 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
+    "http://www.w3.org/TR/html4/loose.dtd">
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+<title>Precompiling and deploying Python
+to any Linux, FreeBSD or Mac OS X system</title>
+<script type="text/javascript" src="sh_main.min.js"></script>
+<script type="text/javascript" src="sh_python.min.js"></script>
+<script type="text/javascript" src="sh_javascript.min.js"></script>
+<link type="text/css" rel="stylesheet" href="sh_dull.min.css">
+<script type="text/javascript">
+// The HTML, JavaScript and CSS in this file has been tested and found
+// working on Chrome 8.0, Firefox 3.6 and 3.6.12, Opera 10.23, Safari,
+// Konqueror 4.4.2 and Internet Explorer 8 (in both IE7 and IE8 mode).
+//
+// The recommended browser for projecting is Google Chrome 8.0 or later, in
+// full screen mode (F11), with Alt-<F> pressed to zoom in if necessary.
+//
+// doc: http://code.jquery.com/jquery-1.4.4.js
+//
+// Syntax highlighing files were downloaded from (and then patched):
+//
+// * http://shjs.sourceforge.net/lang/sh_python.min.js
+// * http://shjs.sourceforge.net/lang/sh_javascript.min.js
+// * http://shjs.sourceforge.net/sh_main.min.js
+// * http://shjs.sourceforge.net/css/sh_nedit.min.css
+//
+// TODO(pts): Add a CSS reset.
+// TODO(pts): Make the slide title always stay on top when scrolling down.
+//
+// The slide layout is optimized for 1024x768, the browser running in full
+// screen mode (F11). Chrome can do that, but Firefox adds a border of about
+// 10 pixels at the top of the page. The user may zoom in or out, but the
+// layout calculations here assume that a 100% zoom is active. Internet
+// Explorer 8 displays its bottom toolbar even in full screen mode (F11).
+//
+// 1024x768 has been chosen so it will work on laptop screens at 1366x768.
+//
+// If the available screen height is at least 1280px horizontally, and 960px
+// vertically (corresponding to the aspect ratio 1024:768), then the
+// Alt-<F> keypress can be used to toggle the +25% font zoom mode
+// (document.body.style.fontSize = '125%'), which yields a similar layout
+// for 1280x1024 displays (except that it's about 74 pixels shorter
+// vertically). The layout would be a bit different though, because `px'
+// dimensions and images are not resized.
+//
+// The doctype above has enables standards compliant mode (which affects all
+// major browsers) in most browsers, see
+// http://en.wikipedia.org/wiki/Quirks_mode
+//
+// Browser compatibility (all using standards compliant mode):
+//
+// Safari is compatible:
+//   appName='Netscape'
+//   appCodeName='Mozilla'
+//   appVersion='5.0 (Macintosh; U; Intel Mac OS X 10_5_8; en-us) AppleWebKit/533.17.8 (KHTML, like Gecko) Version/5.0.1 Safari/533.17.8'
+//   onLine=true
+//   platform='MacIntel'
+//   product='Gecko'
+//   productSub='20030107'
+//   userAgent='Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10_5_8; en-us) AppleWebKit/533.17.8 (KHTML, like Gecko) Version/5.0.1 Safari/533.17.8'
+//   vendor='Apple Computer, Inc.'
+//   vendorSub=''
+// Internet Explorer 8 is compatible
+//   appName='Microsoft Internet Explorer'
+//   appCodeName='Mozilla'
+//   appVersion='4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0)'
+//   onLine=true
+//   platform='Win32'
+//   product=undefined
+//   productSub=undefined
+//   userAgent='Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0)'
+//   vendor=undefined
+//   vendorSub=undefined
+// Internet Explorer 7 (most specifically: Internet Explorer 8 in Internet Explorer 7 mode, with Google Developer Tools)
+// is almost compatible:
+//   gracefully degraded (ignored): doesn't support div.showtitle centering
+//   gracefully degraded: doesn't support our special colorful bullets
+//   appName='Microsoft Internet Explorer'
+//   appCodeName='Mozilla'
+//   appVersion='4.0 (compatible; MSIE 7.0; Windows NT 5.1)'
+//   onLine=true
+//   platform='Win32'
+//   product=undefined
+//   productSub=undefined
+//   userAgent='Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1)'
+//   vendor=undefined
+//   vendorSub=undefined
+// Konqueror is almost compatible
+//   degradedly worked around bug: cannot compute marinTop
+//   worked around bug: wrong keyCode sent for 'keypress' events
+//   appName='Netscape'
+//   appCodeName='Mozilla'
+//   appVersion='5.0 (compatible; Konqueror/4.4; Linux) KHTML/4.4.2 (like Gecko)
+//   Kubuntu'
+//   onLine=undefined
+//   platform='Linux x86_64'
+//   product='Gecko'
+//   productSub='20030107'
+//   userAgent='Mozilla/5.0 (compatible; Konqueror/4.4; Linux) KHTML/4.4.2 (like
+//   Gecko) Kubuntu'
+//   vendor='KDE'
+//   vendorSub=''
+
+var KEY_DOWN = 40
+var KEY_END = 35
+var KEY_HOME = 36
+var KEY_LEFT = 37
+var KEY_PAGEDOWN = 34
+var KEY_PAGEUP = 33
+var KEY_R = 82
+var KEY_F = 70
+var KEY_V = 86
+var KEY_RIGHT = 39
+var KEY_UP = 38
+
+var CHAR_TO_KEY = {
+    102: KEY_F,
+    70:  KEY_F,  // With Shift (no need to set special charCode for Ctrl).
+    118: KEY_V,
+    88:  KEY_V,  // With Shift.
+    0: 0   // Dummy, with no trailing comma for Internet Explorer 7.
+}
+
+function getBackgroundColor(element) {
+  // Cross-browser: Internet Explorer has element.currentStyle, other
+  // browsers (Firefox, Chrome, Safari, Opera and Konqueror) have
+  // window.getComputedStyle().
+  return element.currentStyle ? element.currentStyle.backgroundColor :
+         window.getComputedStyle(element, null).
+         getPropertyValue('background-color')
+}
+
+// Example: getMarginTopPx(document.body)
+function getMarginTopPx(element) {
+  var s = element.currentStyle ? element.currentStyle.marginTop :
+          window.getComputedStyle(element, null).
+          getPropertyValue('margin-top')
+  if (typeof s != 'string')
+    throw new Error('missing style ' + name + ' for ' + element)
+  // Cross-browser: Internet Explorer doesn't support s.substr(-2) (it would
+  // return the whole string), other browsers (Chrome, Firefox, Safari,
+  // Opera and Konqueror) do support this.
+  if (s.substr(s.length - 2) != 'px')
+    throw new Error('style should end with px: ' + s)
+  return parseInt(s, 10)  // This ignores 'px' at the end.
+}
+
+function countSlides() {
+  var c = document.body.childNodes
+  var i
+  var element
+  var slideCount = 0
+  for (i = 0; i < c.length; ++i) {
+    element = c[i]
+    if (element.nodeName == 'DIV' &&
+        (' ' + element.className + ' ').indexOf(' slide ') >= 0)
+      ++slideCount
+  }
+  return slideCount
+}
+
+function goToSlide(targetSlide) {
+  if (typeof targetSlide == 'string') {
+    if (targetSlide.substr(0, 1) == '#')
+      targetSlide = targetSlide.substr(1)  // Ignores everything after the num.
+    targetSlide = parseInt(targetSlide, 10)
+  }
+  if (!targetSlide || targetSlide < 1)
+    targetSlide = 1
+  targetSlide = targetSlide | 0  // Convert to integer.
+  var c = document.body.childNodes
+  var i
+  var element
+  var slideCount = 0
+  var currentSlide = 0
+  for (i = 0; i < c.length; ++i) {
+    element = c[i]
+    if (element.nodeName == 'DIV' &&
+        (' ' + element.className + ' ').indexOf(' slide ') >= 0) {
+      if (++slideCount == targetSlide) {
+        element.style.display = 'block'
+        currentSlide = targetSlide
+      } else {
+        element.style.display = 'none'
+      }
+    }
+  }
+  if (currentSlide != targetSlide) {  // Go to slide 1 as a fallback.
+    currentSlide = targetSlide = 1
+    slideCount = 0
+    for (i = 0; i < c.length; ++i) {
+      element = c[i]
+      if (element.nodeName == 'DIV' &&
+          (' ' + element.className + ' ').indexOf(' slide ') >= 0) {
+        if (currentSlide != targetSlide)
+          ++currentSlide
+        ++slideCount
+        element.style.display = (slideCount == targetSlide) ? 'block': 'none'
+      }
+    }
+  }
+  setSlideNumbers(currentSlide, slideCount)
+}
+
+function setSlideNumbers(currentSlide, slideCount) {
+  document.getElementById('slidecount').innerHTML =
+      currentSlide + ' / ' + slideCount
+  silentSetHash(
+      currentSlide + (document.location.hash.match(/[^#0-9].*/) || [''])[0])
+}
+
+function moveSlide(delta) {
+  if (delta == 0)
+    return true
+  var usearrow = document.getElementById('usearrow')
+  if (usearrow)
+    usearrow.style.visibility = 'hidden'
+  var c = document.body.childNodes
+  var i
+  var isFound = false
+  var element
+  var currentSlide = 0
+  for (i = 0; i < c.length; ++i) {
+    element = c[i]
+    if (element.nodeName == 'DIV' &&
+        (' ' + element.className + ' ').indexOf(' slide ') >= 0) {
+      ++currentSlide
+      if (element.style.display && element.style.display != 'none') {
+        isFound = true
+        break
+      }
+    }
+  }
+  if (!isFound)
+    return false
+  var element0 = element
+  while (delta > 0 && i < c.length) {
+    for (++i; i < c.length; ++i) {
+      element = c[i]
+      if (element.nodeName == 'DIV' &&
+          (' ' + element.className + ' ').indexOf(' slide ') >= 0) {
+        --delta
+        ++currentSlide
+        break
+      }
+    }
+  }
+  while (delta < 0 && i >= 0) {
+    for (--i; i >= 0; --i) {
+      element = c[i]
+      if (element.nodeName == 'DIV' &&
+          (' ' + element.className + ' ').indexOf(' slide ') >= 0) {
+        ++delta
+        --currentSlide
+        break
+      }
+    }
+  }
+  if (delta)
+    return false
+  element0.style.display = 'none'
+  element.style.display = 'block'
+  document.body.scrollTop = 0
+  setSlideNumbers(currentSlide, countSlides())
+}
+
+function addMessage(msg) {
+  var msgElement = document.getElementById('msg')
+  msgElement.style.display = 'block'
+  msgElement.appendChild(document.createTextNode(msg))
+}
+
+function addMessageBr(msg) {
+  var msgElement = document.getElementById('msg')
+  msgElement.style.display = 'block'
+  msgElement.appendChild(document.createTextNode(msg))
+  msgElement.appendChild(document.createElement('br'))
+}
+
+function addValueBr(dict, key) {
+  var msgElement = document.getElementById('msg')
+  msgElement.style.display = 'block'
+  var value = dict[key]
+  if (typeof value == 'string')
+    value = '\'' + value.replace(/\\/g, '\\\\').replace(/'/g, '\\\'') + '\''
+  msgElement.appendChild(document.createTextNode(key + '=' + value))
+  msgElement.appendChild(document.createElement('br'))
+}
+
+
+function onKeyPress(event) {
+  if (!event) event = window.event
+  var keyCode = event.keyCode
+  if ((keyCode == 0 ||  // Cross-browser: Firefox 3.6.12
+       keyCode == event.charCode  // Cross-browser: Konqueror 4.4.2
+      ) && CHAR_TO_KEY[event.charCode]) {
+    // Cross-browser: Firefox 3.6.12 and Konqueror 4.4.2 send keyCode == 0
+    // for keypress (but not for keyup) events on letters, so we get the
+    // keyCode based on the charCode.
+    keyCode = CHAR_TO_KEY[event.charCode]
+  }
+  // Cross-browser: Internet Explorer 8 supports returnValue, all other
+  // browsers (Chrome, Firefox, Safari, Opera and Konqueror) support
+  // event.preventDefault. This would be a neat trick to call
+  // preventDefault() below, but it doesn't work in Firefox 3.6.
+  //
+  // var preventDefault = event.preventDefault ||
+  //     function() { event.returnValue = false }
+  if (keyCode == KEY_DOWN &&
+      !event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey) {
+    // For preventDefault(), see:
+    // http://www.webdevelopment2.com/the-secret-of-cancelling-and-stopping-events-using-javascript/
+    event.preventDefault ? event.preventDefault() : (event.returnValue = false)
+    // Cross-browser: Chrome uses document.body.scrollTop (the other is 0),
+    // Konqueror uses document.documentElement.scrollTop (the other is 0),
+    // Firefox has both.
+    var y = document.body.scrollTop || document.documentElement.scrollTop
+    window.scroll(0, y + 20)
+  } else if (keyCode == KEY_UP &&
+      !event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey) {
+    event.preventDefault ? event.preventDefault() : (event.returnValue = false)
+    var y = document.body.scrollTop || document.documentElement.scrollTop
+    window.scroll(0, y - 20)
+  } else if (keyCode == KEY_HOME &&
+      !event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey) {
+    event.preventDefault ? event.preventDefault() : (event.returnValue = false)
+    window.scroll(0, 0)
+  } else if (keyCode == KEY_END &&
+      !event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey) {
+    event.preventDefault ? event.preventDefault() : (event.returnValue = false)
+    window.scroll(0, document.body.offsetHeight)
+  } else if (keyCode == KEY_RIGHT &&
+      !event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey) {
+    event.preventDefault ? event.preventDefault() : (event.returnValue = false)
+    moveSlide(1)
+  } else if (keyCode == KEY_LEFT &&
+      !event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey) {
+    event.preventDefault ? event.preventDefault() : (event.returnValue = false)
+    moveSlide(-1)
+  } else if (keyCode == KEY_PAGEDOWN &&
+      !event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey) {
+    event.preventDefault ? event.preventDefault() : (event.returnValue = false)
+    var y = document.body.scrollTop || document.documentElement.scrollTop
+    window.scroll(0, y + (document.body.clientHeight -
+        getMarginTopPx(document.body)))  // 20px
+  } else if (keyCode == KEY_PAGEUP &&
+      !event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey) {
+    event.preventDefault ? event.preventDefault() : (event.returnValue = false)
+    var y = document.body.scrollTop || document.documentElement.scrollTop
+    window.scroll(0, y - (document.body.clientHeight -
+        getMarginTopPx(document.body)))  // 20px
+  } else if (keyCode == KEY_F &&
+      !event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey) {
+    event.preventDefault ? event.preventDefault() : (event.returnValue = false)
+    var eRulers = document.getElementById('rulers')
+    eRulers.style.display =
+        (eRulers.style.display || 'none') == 'none' ? 'block' : 'none'
+  } else if (keyCode == KEY_F &&  // Alt-<F>
+      event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey) {
+    // Unfortunately this doesn't cancel the default menu popup in
+    // Internet Explorer 8. I can't find a way to cancel it.
+    event.preventDefault ? event.preventDefault() : (event.returnValue = false)
+    // Cross-browser: Internet Explorer 8 provides
+    // document.documentElement.clientWidth, all other browsers (Chrome,
+    // Firefox, Safari, Opera and Konqueror) provide window.innerWidth (and
+    // possibly the other one as well).
+    var width = window.innerWidth || document.documentElement.clientWidth
+    var height = window.innerHeight || document.documentElement.clientHeight
+    var hasChanged = zoom(width >= 1280 && height >= 960)
+    var eRulers = document.getElementById('rulers')
+    eRulers.style.display =
+        hasChanged || (eRulers.style.display || 'none') == 'none' ?
+        'block' : 'none'
+  } else if (keyCode == KEY_V && !event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey) {
+    var msgElement = document.getElementById('msg')
+    event.preventDefault ? event.preventDefault() : (event.returnValue = false)
+    // display is empty by default ('none' is the default for msgElement)
+    if ((msgElement.style.display || 'none') == 'none') {
+      msgElement.innerHTML = ''
+      addValueBr(navigator, 'appName')
+      addValueBr(navigator, 'appCodeName')
+      addValueBr(navigator, 'appVersion')
+      addValueBr(navigator, 'onLine')
+      addValueBr(navigator, 'platform')
+      addValueBr(navigator, 'product')
+      addValueBr(navigator, 'productSub')
+      addValueBr(navigator, 'userAgent')
+      addValueBr(navigator, 'vendor')
+      addValueBr(navigator, 'vendorSub')
+    } else {
+      msgElement.style.display = 'none'
+    }
+  } else {
+    // addMessage(';kc=' + keyCode + ',cc=' + event.charCode)
+  }
+}
+
+
+// containerElement can be document.body etc. Containment is recursive.
+function fixPercentHeights(containerElement, fullHeight) {
+  // document.body.clientHeight == window.innerHeight (if no margins)
+  if (fullHeight == null)
+    fullHeight = window.innerHeight || document.documentElement.clientHeight
+
+  function fixPercentHeight(element) {
+    var percent = element.style.lineHeight
+    if (percent.substr(percent.length - 1) == '%')
+      element.style.height =
+          Math.round(parseFloat(percent) * fullHeight / 100) + 'px'
+  }
+
+  if (containerElement.getElementsByClassName) {
+    // Cross-browser: Internet Explorer 9 and all other browsers (Chrome,
+    // Firefox, Safari, Opera and Konqueror).
+    var elements = containerElement.getElementsByClassName('percentheight')
+    for (var i = 0; i < elements.length; ++i) {
+      if (elements[i].tagName == 'DIV')
+        fixPercentHeight(elements[i])
+    }
+  } else {
+    // Cross-browser: Slower but working implementation for Internet
+    // Explorer 8.
+    var elements = containerElement.getElementsByTagName('DIV')
+    for (var i = 0; i < elements.length; ++i) {
+      if (elements[i].className == 'percentheight')
+        fixPercentHeight(elements[i])
+    }
+  }
+}
+
+function onResize() {
+  // Cross-browser: In Firefox 3.6, we get multiple resize events on F11
+  // (full screen), because the resize is animated. Chrome also seems to
+  // send multiple resize event on a manual resize. We don't care.
+  //
+  // In KHTML, document.body.offsetWidth is valid at this point, so we can
+  // use it. (But i was not valid in onDomReady.)
+  document.getElementById('backgroundfiller').style.width =
+      document.body.offsetWidth + 'px'
+  var height = window.innerHeight || document.documentElement.clientHeight
+  fixPercentHeights(document.body)
+}
+
+var prevHash
+
+function silentSetHash(hash) {
+  prevHash = hash
+  if (document.location.hash != prevHash &&
+      document.location.hash != '#' + prevHash)
+    document.location.hash = prevHash
+}
+
+function onHashChange() {
+  var hash = document.location.hash
+  if (hash == prevHash) {
+  } else if (hash == '#' + prevHash) {
+    prevHash = hash
+  } else {
+    prevHash = hash
+    goToSlide(hash)
+    zoom(hash.indexOf('z') >= 0)
+  }
+}
+
+// Zoom in or out.
+//
+// If doZoomIn is true, set body font size to 125%, otherwise set body font
+// size to 150%.
+//
+// Return true iff the body font size has changed.
+function zoom(doZoomIn) {
+  var hasChanged = true
+  if (doZoomIn) {
+    var eRulers = document.getElementById('rulers')
+    var i, eRuler
+    for (i = 0; i < eRulers.childNodes.length; ++i) {
+      var eRuler = eRulers.childNodes[i]
+      if (eRuler.nodeName == 'DIV')
+        eRuler.style.backgroundColor = '#00ff00'
+    }
+    document.getElementById('hruler').style.width = '1280px'
+    document.getElementById('vruler').style.height = '1024px'  // not 960
+    document.getElementById('vmid').style.display = 'block'
+    if (document.body.style.fontSize == '125%') {
+      hasChanged = false
+    } else {
+      document.body.style.fontSize = '125%'
+    }
+    if (document.location.hash.indexOf('z') < 0)
+      silentSetHash(document.location.hash + 'z')
+  } else {
+    var eRulers = document.getElementById('rulers')
+    var i, eRuler
+    for (i = 0; i < eRulers.childNodes.length; ++i) {
+      var eRuler = eRulers.childNodes[i]
+      if (eRuler.nodeName == 'DIV')
+        eRuler.style.backgroundColor = '#ff0000'
+    }
+    document.getElementById('hruler').style.width = '1024px'
+    document.getElementById('vruler').style.height = '768px'
+    document.getElementById('vmid').style.display = 'none'
+    prevHash = document.location.hash.replace(/z/g, '')
+    if (!document.body.style.fontSize) {
+      hasChanged = false
+      document.body.style.fontSize = '100%'
+    } else if (document.body.style.fontSize == '100%') {
+      hasChanged = false
+    } else {
+      document.body.style.fontSize = '100%'
+    }
+    silentSetHash(document.location.hash.replace(/z/g, ''))
+  }
+  return hasChanged
+}
+
+function onDomReady() {
+  // Fallback on the bullet sizes (they are still too small, but at least
+  // they are visible).
+  // TODO(pts): Add large bullets (by changing the li.font-size).
+  if (navigator.userAgent.lastIndexOf(' MSIE 7.') >= 0)
+    document.body.className = 'simplebullet'
+  var bodyWidth = document.body.offsetWidth
+  var bodyHeight = document.body.offsetHeight
+  var bodyBackground = getBackgroundColor(document.body)
+  var marginTop = getMarginTopPx(document.body)
+  fixPercentHeights(document.body)
+  // onDomReady is called before images get loaded.
+  // konqueror has onDomReady as well
+  // addMessage('READY' + document.body.clientHeight + ',' + document.body.style.marginTop)
+  if (window.sh_highlightDocument) {
+    // Run the syntax highlighting using shjs (http://shjs.sf.net/)
+    window.sh_highlightDocument()
+  }
+  var height = document.body.clientHeight
+  if (window.addEventListener) {
+    window.addEventListener('resize', onResize, false)
+    window.addEventListener('hashchange', onHashChange, false)
+  } else {  // Cross-browser: Internet Explorer 8
+    window.attachEvent('onresize', onResize)
+    window.attachEvent('onhashchange', onHashChange)
+  }
+  if (!document.addEventListener) {
+    document.attachEvent('onkeydown', onKeyPress)
+  } else if (navigator.userAgent.indexOf(' AppleWebKit/') >= 0) {
+    // Cross-browser: Chrome 8.0 and Safari don't send the arrow key events
+    // for 'keypress', but they do send them (auto-repeated) on 'keydown'.
+    document.addEventListener('keydown', onKeyPress, false)
+  } else {
+    // Cross-browser: In Firefox 3.6.12, we wouldn't get any auto-repeats if
+    // we registered for 'keydown' instead of 'keypress'. See more in
+    // https://developer.mozilla.org/en/DOM/Event/UIEvent/KeyEvent
+    document.addEventListener('keypress', onKeyPress, false)
+  }
+  document.getElementById('bottomcover').style.height = marginTop + 'px'
+  document.getElementById('slidecount').style.bottom = marginTop + 'px'
+  document.getElementById('slidecount').style.right = marginTop + 'px'
+  document.getElementById('backgroundfiller').style.top = marginTop + 'px'
+  document.getElementById('backgroundfiller').style.left = marginTop + 'px'
+  // About 2 * marginTop less than 100%.
+  document.getElementById('backgroundfiller').style.width = bodyWidth + 'px'
+  document.getElementById('backgroundfiller').style.backgroundColor = bodyBackground
+  onHashChange()  // includes goToSlide(document.location.hash) + zooming
+}
+
+// Cross-browser: This is just for Internet Explorer.
+function onReadyStateChange() {
+  if (document.readyState == 'complete') {
+    document.detachEvent('onreadystatechange', onReadyStateChange)
+    onDomReady()
+  }
+}
+
+// Cross-browser:
+if (navigator.userAgent.indexOf(' KHTML/') >= 0) {  // Konqueror 4.4.2.
+  // Although Konqueror supports the 'DOMContentLoaded' event (see below),
+  // we fall back to the slower 'load' instead, because with
+  // 'DOMContentLoaded' metrics like document.body.offsetHeight are not yet
+  // initialized (but window.innerHeight is), and they return bogus default
+  // values -- but with 'load', they'll return their appropriate values.
+  document.addEventListener('load', onDomReady, false)
+} else if (document.addEventListener) {
+  // Chrome, Mozilla, Safari, Opera.
+  document.addEventListener('DOMContentLoaded', onDomReady, false)
+} else if (document.attachEvent) {  // Internet Explorer 8.
+  document.attachEvent('onreadystatechange', onReadyStateChange)
+}
+window.slideJsOk = true
+</script>
+<style type="text/css">
+div.slide p#usearrow {
+  color:#777777;
+}
+div.slide p.browsererror {
+  border:3px solid red;
+  padding:2px;
+}
+div#bottomcover {
+  position:fixed;
+  bottom:0px;
+  left:0px;
+  background:#000000;
+  width:100%;
+  height:20px;  /* overwritten in onDomReady from body.margin-top */
+}
+div#slidecount {
+  position:fixed;
+  bottom:20px;  /* overwritten in onDomReady from body.margin-top */
+  right:20px;  /* overwritten in onDomReady from body.margin-top */
+  width:auto;
+  background:#ffffff;
+  padding:.15em;   /* padding affected by background */
+  padding-top:0em;
+  padding-right:.25em;
+  margin:0em;  /* margin not affected by background */
+  margin-top:.15em;
+}
+div#msg {
+  position:fixed;
+  display:none;
+  bottom:20px;  /* overwritten in onDomReady from body.margin-top */
+  left:20px;  /* overwritten in onDomReady from body.margin-top */
+  width:auto;
+  background:#ffa500;
+  padding:.3em;
+  margin:0px;
+}
+/* Cross-browser: Helper element for providing a backround for
+ * not-tall-enough slides. This is needed in Chrome 8.0, Firefox 3.6.12,
+ * Konqueror 4.4.2, Safari and Opera in standards-compliant mode. (Chrome
+ * doesn't need it in quirks mode.)
+ */
+div#backgroundfiller {
+  position:fixed;
+  background:#00ff00;  /* for debugging, change thise to green */
+  top:20px;  /* overwritten in onDomReady from body.margin-top */
+  left:20px;  /* overwritten in onDomReady from body.margin-top */
+  height:100%;
+  width:100%;  /* overwritten in onDomReady from body.offsetWidth */
+  z-index:-1;
+}
+html {
+  border:none;
+  margin:0px;
+  padding:0px;
+  overflow:hidden;  /* hide scrollbar; removes vertical scrolling in Chrome, so we'll add our KeyboardEvent handler below */
+  font-size:32px;
+  font-family: Arial;
+  background:#000000;
+  color:#000000;
+}
+body {
+  border:none;
+  background:#ffffff;
+  margin:20px;  /* the margin-top value is copied elsewhere by onDomReady */
+  padding:0px;
+  /* All sub-element font sizes must be specified in %, so if we change
+   * document.body.style.fontSize, then they will get updated.
+   */
+  font-size:100%;
+}
+div.slide {
+  overflow:auto;  /* makes the bottom margin of the last p show */
+  display:none;
+  background:#ffffff;
+  padding:0em;
+  padding-top:1px;  /* hack to disable collapsing of margins with the next p, see also http://www.webmasterworld.com/css/3530816.htm */
+}
+div.slide p {
+  margin-top:0.6em;
+  margin-bottom:0.6em;  /* adds extra black border at bottom */
+  padding:0px;
+}
+div.slide div.big {
+  margin-top:0.6em;
+  margin-bottom:0.6em;
+  padding:0px;
+}
+div.slide div.mid {
+  margin-top:0.4em;
+  margin-bottom:0.4em;
+  margin-left:0.6em;
+  margin-right:0.6em;
+  padding:0px;
+}
+div.slide div.big div {
+  margin-left:1em;
+  margin-right:1em;
+  margin-left:0.6em;
+  margin-right:0.6em;
+  padding:0px;
+}
+div.slide div.mid div {
+  margin-left:1em;
+  margin-right:1em;
+}
+div.slide tt {
+  font-size:90%;
+  font-family: DejaVu Sans Mono, Bitstream Vera Mono, Lucida Console, Lucida Sans Mono, Consolas, Courier New;
+}
+div.slide b {
+  font-weight:bold;
+  color:#225555;
+}
+div.slide code {
+  font-size:90%;
+  background:#ffffbb;
+  color:#333333;
+  font-family: DejaVu Sans Mono, Bitstream Vera Mono, Lucida Console, Lucida Sans Mono, Consolas, Courier New;
+}
+div.slide pre {
+  overflow-x:auto;
+  background:#ffffbb;
+  border:1px solid #000000;
+  padding:1px;
+  margin-top:1em;
+  margin-bottom:1em;
+  font-family: DejaVu Sans Mono, Bitstream Vera Mono, Lucida Console, Lucida Sans Mono, Consolas, Courier;  
+  font-size:75%;
+}
+div.slide pre.small {
+  font-size:62.5%;
+}
+
+div.slide li {
+  margin-top:0.5em;
+  margin-bottom:0.5em;
+}
+div.slide ul > li {
+  list-style-type:none;
+  list-style-position:outside;
+}
+body.simplebullet div.slide ul > li {
+  list-style-type:square;
+  list-style-position:outside;
+}
+div.slide ul {
+  padding-left:2em;
+  padding-right:1em;
+  margin-left:0px;
+}
+div.slide ol {
+  padding-left:2em;
+  margin-left:0px;
+}
+div.slide a {
+  color:#3333ff;
+}
+div.slide ul > li:before {
+  color:#7777ff;
+  content:"\25a0";
+  display:inline-block;
+  margin-left:-0.9em;
+  width:0.9em;
+  font-family: Arial;  /* Arial has this character -- which other font too? */
+  line-height:0pt;
+  font-size:110%;
+}
+div.slide div.showtitle {
+  margin-left:auto;
+  margin-right:auto;
+  /* display:table + font-size:...% in the same div interact badly on the
+   * baselineskip if the fontSize % of the body is changed (e.g. in zoom()),
+   * even if line-height:115% is specified (the default), then the line
+   * height doesn't get updated in Chrome 8. So our solution is to put the
+   * font-size:140% in a sub-div, see below.
+   */
+  display:table;
+}
+div.slide div.showtitle > div {
+  background:#7777ff;
+  color:#ffffff;
+  text-align:center;
+  padding:.34em;
+  /*line-height:115%;*/
+  font-size:140%;
+}
+div.slide > h1 {
+  background:#7777ff;
+  color:#ffffff;
+  margin-top:-1px;  /* negate the padding-top:1px of the div.slide */
+  margin-bottom:0.3em;
+  margin-left:0em;
+  margin-right:0em;
+  padding-left:.34em;
+  padding-right:.34em;
+  padding-top:.2em;
+  padding-bottom:.2em;
+  font-size:140%;
+  font-weight:bold;
+}
+div.slide > div {
+  margin-left:0.6em;
+  margin-right:0.6em;
+}
+div.slide > p {
+  margin-left:0.6em;
+  margin-right:0.6em;
+}
+div.slide > pre {
+  margin-left:1em;
+  margin-right:1em;
+}
+div.slide pre.small {
+  /* 1.2em == 1em * 75%/62.5% */
+  margin:1.2em;
+}
+div.slide > ol {
+  padding-left:2.6em;
+  padding-right:0.6em;
+}
+div.slide > ul {
+  padding-left:2.6em;
+  padding-right:0.6em;
+}
+div.slide ul.h {
+  visibility:hidden;
+}
+div.slide table {
+  border:2px solid #7777ff;
+  padding:0px;
+  border-collapse:collapse;
+}
+div.slide table td {
+  border:2px solid blue;
+  margin:0px;
+  padding:5pt;
+}
+div#rulers {
+  position:fixed;
+  display:none;
+  background:#ffffff;  /* does not make any difference, sub-divs do */
+}
+div#rulers > div {
+  position:fixed;
+  background:#ff0000;
+  z-index:2;
+}
+</style>
+</head><body>
+<div id=rulers>
+<div id=hruler style="top:0;left:0;width:1024px;height:8px"></div>
+<div id=vruler style="top:0;left:0;width:8px;height:768px"></div>
+<div id=hend style="top:8px;right:0;width:8px;height:8px"></div>
+<div id=vmid style="top:952px;left:8px;width:8px;height:8px"></div>
+<div id=vend style="bottom:0;left:8px;width:8px;height:8px"></div>
+</div>
+
+<div id="backgroundfiller"></div>
+<div id="msg"></div>
+<div id="slidecount"></div>
+<div id="bottomcover"></div>
+
+<div class="slide" style="display:block">
+<noscript><p class=browsererror>Please enable JavaScript in your browser and reload this page
+to view the slides.</p></noscript>
+<script type="text/javascript"><!--
+var ib
+if (!window.slideJsOk) {
+  document.write('<p class=browsererror>Please view this document in a different web browser (e.g. Chrome, Firefox, Safari, Opera, Konqueror or Internet Explorer), because this browser does not seem to be able to run the required JavaScript properly.<' + '/p>')
+} else if (navigator.userAgent.indexOf('MSIE 6.') >= 0 ||
+           navigator.userAgent.indexOf('MSIE 5.') >= 0 ||
+           navigator.userAgent.indexOf('MSIE 4.') >= 0) {
+  document.write('<p class=browsererror>Please view this document in a different web browser (e.g. Chrome, Firefox, Safari, Opera, Konqueror), because your Internet Explorer is too old (at least IE7 is needed, and IE8 is recommended).<' + '/p>')
+} else {
+  document.write('<p id=usearrow>Use the arrow keys to navigate this presentation.<' + '/p>')
+}
+// -->
+</script>
+<div class="percentheight" style="line-height:5%"></div>
+<div class="showtitle"><div>Precompiling and deploying Python<br>
+to any Linux, FreeBSD or Mac OS X system</div></div>
+<div class="percentheight" style="line-height:20%"></div>
+<div style="text-align:center">Péter Szabó, <tt>pts@google.com</tt><br>
+<p>EuroPython, Florence, 2011-06-23</div>
+
+</div>
+
+<div class="slide">
+<h1>Misery of manual installation</h1>
+<p>Developer to the user: <i>This server is a small Python script, and it
+depends on Concurrence only.</i>
+<ul>
+<li>Install <b>Python</b> from package.
+<li>Start the <b>script.</b> (Fails, needs Concurrence.)
+<li>Try to compile <b>Concurrence.</b> (Fails, needs libevent.)
+<li>Install <b>libevent.</b> (Will fail, package too old.)
+<li>Compile libevent. (Fails first because of header file conflict.)
+<li>Compile and install Concurrence. (Fails, needs Stackless Python.)
+<li>Compile <b>Stackless Python.</b> (Fails, needs libc6-dev, libz-dev,
+    libreadline-dev.)
+<li>Install all <b>library dependencies</b> (hopefully).
+<li>Repeat on every machine.
+</ul>
+</div>
+
+<div class="slide">
+<h1>How to precompile Python programs?</h1>
+<p>Create single-file executable or installer:
+<ul>
+<li>PyInstaller (cross-platform)
+<li>bbfreeze (cross-platfrom)
+<li>cx_Freeze (cross-platform)
+<li>py2exe for Windows
+<li>py2app for Mac OS X
+</ul>
+<p>Bundle all C code into a single-file executable:
+<ul>
+<li>StaticPython (cross-platform)
+</ul>
+</div>
+
+<div class="slide">
+<h1>Cross-platform</h1>
+<ul>
+<li><b>Linux</b> (84.7%)
+<ul>
+<li>32-bit i386
+<li>statically linked
+</ul>
+<li><b>Mac OS X</b> (3.27%)
+<ul>
+<li>32-bit i386, 10.5 or later
+<li>uses only libSystem.B.dylib and libncurses.5.dylib
+</ul>
+<li><b>FreeBSD</b> (1.64%)
+<ul>
+<li>runs the Linux binaries unmodified
+<li>needs <code>kldload linux</code>
+</ul>
+<li>not supported: Windows (6.56%)
+<li>rest (3.82%)
+</div>
+
+<div class="slide">
+<h1>What's included</h1>
+
+<ul>
+<li>(C)Python 2.7.1 or (C)Python 3.2
+<li>all built-in <i>.py</i> modules
+<li>all (applicable) built-in C extension modules, including proper
+    <i>thread</i>, <i>readline</i>, <i>sqlite3</i>
+<li><i>greenlet</i> 0.3.1
+<li>full interactive interpreter (<code>python -i</code>)
+<li>all Python command-line flags
+<li>missing: <i>ctypes</i> and <i>.so</i> extension loading
+</ul>
+
+<p>The <i>stackless</i> binary contains:
+
+<ul>
+<li>Stackless Python 2.7.1
+<li>and everything above, including <i>greenlet</i>
+</ul>
+</div>
+
+<div class="slide">
+<h1>More goodies in the <i>stacklessco</i> binary</h1>
+
+<ul>
+<li>SSL sockets (<i>_ssl</i>) and hashes (<i>_hashlib</i>) using OpenSSL
+<li>PyCrypto
+<li>alo-aes
+<li><i>gevent</i> with <i>libevent2</i>
+<li>gevent-MySQL
+<li>Syncless with <i>libevent2</i>
+<li>Concurrence
+</ul>
+
+<p><i>stacklessco</i> also runs these at full speed:
+<ul>
+<li>Twisted
+<li>Eventlet
+<li>Tornado
+</ul>
+</div>
+
+<div class="slide">
+<h1>How many bytes is the 2.7 binary?</h1>
+
+<table align=center>
+<thead>
+<tr><td colspan=4 align=center>Linux</tr>
+<tr><td>binary<td>uncompressed<td>compressed<td>savings</tr>
+</thead>
+<tr><td><i>python</i><td align=right>6146018<td align=right>3440514<td align=right>&ndash;44%</tr>
+<tr><td><i>stackless</i><td align=right>6310269<td align=right>3469037<td align=right>&ndash;45%</tr>
+<tr><td><i>stacklessco</i><td align=right>7808491<td align=right>4148341<td align=right>&ndash;47%</tr>
+</table>
+
+<div style="height:1.5em"></div>
+
+<table align=center>
+<thead>
+<tr><td colspan=4 align=center>Mac OS X</tr>
+<tr><td>binary<td>uncompressed<td>compressed<td>savings</tr>
+</thead>
+<tr><td><i>python</i><td align=right>5847346<td align=right>3321314<td align=right>&ndash;43%</tr>
+<tr><td><i>stackless</i><td align=right>6020717<td align=right>3353053<td align=right>&ndash;44%</tr>
+<tr><td><i>stacklessco</i><td align=right>7541811<td align=right>4039337<td align=right>&ndash;46%</tr>
+</table>
+</div>
+
+<div class="slide">
+<h1>How is the binary constructed?</h1>
+<ul>
+<li><code>upx --brute</code> for C code was considered, but it's not used,
+    because it makes startup slow
+<li><code>advzip -z -4</code> for Python code
+<li>concatenate
+<li><code>svn commit</code>
+<ul>
+<li><a href="http://code.google.com/p/pts-mini-gpl/source/browse/#svn/trunk/staticpython/release">Linux and FreeBSD binaries</a>
+<li><a href="http://code.google.com/p/pts-mini-gpl/source/browse/#svn/trunk/staticpython/release.darwin">Mac OS X binaries</a>
+</ul>
+</ul>
+</div>
+
+<div class="slide">
+<h1>Distribution-specific changes</h1>
+<ul>
+<li>force <i>config.guess</i> to i386 (32-bit)
+<li>force <i>HAVE_DYNAMIC_LOADING</i> off
+<li>reimplement <i>calculate_path()</i> to read from <code>argv[0]</code> as a <i>.zip</i> file
+<li>add all C extensions to <i>Modules/Setup</i> (with manual filenames)
+<li>remove <code>-g</code>, force <code>-O2</code> for <code>gcc</code> in Makefiles
+<li>remove unapplicable <i>lib/plat-*</i>
+<li>set OS to <i>Linux</i> in the ELF headers, for FreeBSD
+<li><i>STACKLESS_FRHACK</i> for the <i>ebx</i> register on the Mac OS X
+</ul>
+</div>
+
+<div class="slide">
+<h1>Distribution-specific changes for modules</h1>
+<ul>
+<li><i>sqlite</i> needs an extra <code>#include "util.h"</code>
+<li>force good <i>event.h</i> for libevent2 in <i>gevent</i>
+<li>run <i>pyrexc</i> manually for Concurrence (<i>setup.py</i> is never run!)
+<li>proxy for non-toplevel C extensions, e.g. <i>gevent/core.py</i>:
+    <pre class=sh_python>import sys; sys.modules[__name__] = __import__('_gevent_core')</pre>
+</ul>
+</div>
+
+<div class="slide">
+<h1>The build system <i>(build.sh)</i></h1>
+<ul>
+<li>fully automated
+<li>fully deterministic and repeatable
+<ul>
+<li>on Linux: bundled and statically linked <i>gcc, ld, busybox, make, perl</i>
+<li>all source <i>.tar.gz</i> files in the repository:
+    Python, zlib, bz2, ncurses, readline, sqlite3, libevent2.
+</ul>
+<li>not incremental, rebuilds from scratch
+<li>has some very rough and manual incrementality support
+<li>can be extended to build custom binaries
+</ul>
+</div>
+
+<div class="slide">
+<h1>Porting issues</h2>
+<p>Mac OS X:
+<ul>
+<li>use Xcode for Mac OS X 10.5 to build GCC 4.4 using MacPorts 
+<li>compile using <code>gcc-mp-4.4 -m32 -static-libcc</code>
+<li>no support for static binaries in the operating system
+<li>rename to <i>libreadline-staticpython.a</i>, because <i>-lreadline</i>
+    would link against <i>libreadline.*.dylib</i>
+<li>remove the <i>spwd</i> module, no shadow passwords 
+</ul>
+<p>FreeBSD:
+<ul>
+<li>no epoll(4) emulation for FreeBSD, libevent2 reverts to poll(2)
+<li>everything else works by magic (no userspace libararies needed)
+</ul>
+</div>
+
+<div class="slide">
+<p style="text-align:center;font-size:900%;margin-top:20%">?
+</div>
+
+</body></html>

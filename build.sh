@@ -132,7 +132,7 @@ for ARG in "$@"; do
 done
 if test -z "$STEPS"; then
   # Don't include betry here.
-  STEPS="initbuilddir initdeps configure patchsetup fixsetup patchimport patchgetpath patchsqlite patchssl makeminipython patchsyncless patchgevent patchgeventmysql patchconcurrence patchpycrypto patchaloaes fixsetup makepython buildpythonlibzip buildtarget"
+  STEPS="initbuilddir initdeps configure patchsetup fixsetup patchimport patchgetpath patchsqlite patchssl patchlocale makeminipython patchsyncless patchgevent patchgeventmysql patchconcurrence patchpycrypto patchaloaes fixsetup makepython buildpythonlibzip buildtarget"
 fi
 
 INSTS="$INSTS_BASE"
@@ -239,7 +239,7 @@ initbuilddir() {
     tar xzvf ../../greenlet-0.3.1.tar.gz
     if test "$IS_PY3"; then
       # TODO(pts): Copy patch(1) this to the Mac OS X chroot.
-      patch -p0 <../../greenlet-0.3.1-pycapsule.patch
+      patch -p0 -t <../../greenlet-0.3.1-pycapsule.patch || return "$?"
     fi
   ) || return "$?"
 
@@ -258,19 +258,20 @@ initbuilddir() {
 
 initdeps() {
   if test "$UNAME" = Darwin; then  # Mac OS X
-    builddeps
+    builddeps || return "$?"
   else  # Linux
-    extractinsts
+    extractinsts || return "$?"
   fi
 }
 
 builddeps() {
-  buildlibz
-  buildlibssl
-  buildlibbz2
-  buildlibreadline
-  buildlibsqlite3
-  buildlibevent2
+  # The `|| return "$?"' clauses are needed by bash 3.2.17 on Mac OS X.
+  buildlibz || return "$?"
+  buildlibssl || return "$?"
+  buildlibbz2 || return "$?"
+  buildlibreadline || return "$?"
+  buildlibsqlite3 || return "$?"
+  buildlibevent2 || return "$?"
 }
 
 buildlibbz2() {
@@ -331,14 +332,15 @@ buildlibssl() {
   test "$USE_SSL" || return 0
   ( cd "$BUILDDIR" || return "$?"
     rm -rf openssl-0.9.8r.tar.gz || return "$?"
-    tar xjvf ../openssl-0.9.8r.tar.gz || return "$?"
+    tar xzvf ../openssl-0.9.8r.tar.gz || return "$?"
     cd openssl-0.9.8r || return "$?"
     if test "$UNAME" = Linux; then
       ./Configure no-shared linux-generic32 || return "$?"
     else
+      # This inserts `-arch i386', which we remove below.
       ./Configure no-shared darwin-i386-cc || return "$?"  # TODO(pts): Test this.
     fi
-    perl -pi~ -e 's@\s-g(?!\S)@@g, s@\s-O\d*(?!\S)@ -O2@g, s@\s-D(DSO_DLFCN|HAVE_DLFCN_H)\S*@@g if s@^CFLAG\s*=\s*@CFLAG = @' Makefile || return "$?"
+    perl -pi~ -e 's@\s(?:-g|-arch\s+\S+)(?!\S)@@g, s@\s-O\d*(?!\S)@ -O2@g, s@\s-D(DSO_DLFCN|HAVE_DLFCN_H)(?!\S)@@g if s@^CFLAG\s*=\s*@CFLAG = @' Makefile || return "$?"
     make build_libs || return "$?"
     cp libssl.a ../build-lib/libssl-staticpython.a || return "$?"
     cp libcrypto.a ../build-lib/libcrypto-staticpython.a || return "$?"
@@ -418,13 +420,16 @@ fixmakefile() {
     perl -pi~ -e 's@\s-(?:g|O\d*)(?!\S)@@g, s@$@ -O2@ if s@^OPT\s*=@OPT = @' Makefile || return "$?"
     perl -pi~ -e 's@\s-(?:g|O\d*)(?!\S)@@g, s@$@ -O2@ if s@^SLPFLAGS\s*=@SLPFLAGS = @' Makefile || return "$?"
     perl -pi~ -e 's@\s-g(?!\S)@@g, s@\s-O\d*(?!\S)@@g if s@^CFLAGS\s*=@CFLAGS = @' Makefile || return "$?"
-    if ! grep '@SLPFLAGS@' Makefile; then
-      :
-    elif test "$UNAME" = Darwin; then
-      # Fix for Stackless 3.2.
-      perl -pi~ -e 's~\@SLPFLAGS\@~-fomit-frame-pointer -O2~g' Makefile || return "$?"
-    else
-      perl -pi~ -e 's~\@SLPFLAGS\@~-fno-omit-frame-pointer -O2~g' Makefile || return "$?"
+    if test "$IS_PY3"; then
+      if ! grep '@SLPFLAGS@' Makefile; then
+        :
+      elif test "$UNAME" = Darwin; then
+        # Fix for Stackless 3.2.
+        # TODO(pts): Run all Stackless test to verify this.
+        perl -pi~ -e 's~\@SLPFLAGS\@~-fomit-frame-pointer -DSTACKLESS_FRHACK=1 -O2~g' Makefile || return "$?"
+      else
+        perl -pi~ -e 's~\@SLPFLAGS\@~-fno-omit-frame-pointer -O2~g' Makefile || return "$?"
+      fi
     fi
   ) || return "$?"
 }
@@ -479,6 +484,7 @@ patchimport() {
 patchgetpath() {
   # This patch is idempotent.
   # TODO(pts): Make sure that the source string is there for patching.
+  # TODO(pts): Make this repatch if calculate_path.*.c is modified.
   perl -pi~ -0777 -e 's@\s+static\s+void\s+calculate_path(?!   )\s*\(\s*void\s*\)\s*{@\n\nstatic void calculate_path(void);  /* StaticPython */\nstatic void calculate_path_not(void) {@g' "$BUILDDIR"/Modules/getpath.c
   if ! grep -q StaticPython-appended "$BUILDDIR/Modules/getpath.c"; then
     if test "$IS_PY3"; then
@@ -624,6 +630,7 @@ run_pyrexc() {
 run_mkzip() {
   # advzip produces smaller files than `zip -9r', because advzip uses the
   # 7-Zip implementation of zip.
+  rm -f "$1" || return "$?"  # The .zip file.
   "$PBUILDDIR/advzip/bin/advzip" -a -4 "$@" || return "$?"
 }
 
@@ -761,6 +768,21 @@ patchaloaes() {
   ) || return "$?"
 }
 
+patchlocale() {
+  # TODO(pts): Make this idempotent.
+  ( cd "$BUILDDIR" || return "$?"
+    if test "$UNAME" = Darwin; then
+      # To make Python able to start up with `export LC_CTYPE=utf-8', which
+      # is a useful setting on the Mac OS X.
+      if test "$IS_PY3"; then
+        (cd Lib && patch -p1 -t <../../locale.darwin.3.2.patch) || return "$?"
+      else
+        # Test it with: ./python2.7-static -c 'import locale; print locale.getpreferredencoding()'
+        (cd Lib && patch -p1 -t <../../locale.darwin.2.7.patch) || return "$?"
+      fi
+    fi
+  ) || return "$?"
+}
 
 makeminipython() {
   test "$IS_CO" || return 0
@@ -811,9 +833,9 @@ buildpythonlibzip() {
            xlib/site-packages* xlib/sqlite3/test/* xlib/turtle* xlib/tkinter \
            xlib/test xlib/*.egg-info || return "$?"
     if test "$UNAME" = Darwin; then
-      rm -rf xlib/plat-linux2
+      rm -rf xlib/plat-linux2 || return "$?"
     else
-      rm -rf xlib/plat-darwin
+      rm -rf xlib/plat-darwin || return "$?"
     fi
     if test "$IS_PY3"; then
       cp ../site.3.2.py xlib/site.py || return "$?"
@@ -902,10 +924,16 @@ betry() {
   (cd be && ./sp) || return "$?"
 }
 
+fail_step() {
+  set +ex
+  echo "Failed in step $2 with code $1"
+  exit "$1"
+}
+
 for STEP in $STEPS; do
   echo "Running step: $STEP"
   set -ex
-  $STEP || exit "$?"
+  $STEP || fail_step "$?" "$STEP"
   set +ex
 done
 echo "OK running steps: $STEPS"

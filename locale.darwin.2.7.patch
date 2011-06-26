@@ -1,0 +1,28 @@
+--- Lib/locale.py.orig	2011-06-26 14:52:07.000000000 +0200
++++ Lib/locale.py	2011-06-26 14:52:36.000000000 +0200
+@@ -342,20 +342,25 @@
+         If normalization fails, the original name is returned
+         unchanged.
+ 
+         If the given encoding is not known, the function defaults to
+         the default encoding for the locale code just like setlocale()
+         does.
+ 
+     """
+     # Normalize the locale name and extract the encoding
+     fullname = localename.lower()
++
++    if fullname in ('utf8', 'utf-8'):
++      localename = 'en_US.utf-8'
++      fullname = localename.lower()
++
+     if ':' in fullname:
+         # ':' is sometimes used as encoding delimiter.
+         fullname = fullname.replace(':', '.')
+     if '.' in fullname:
+         langname, encoding = fullname.split('.')[:2]
+         fullname = langname + '.' + encoding
+     else:
+         langname = fullname
+         encoding = ''
+ 

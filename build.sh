@@ -234,11 +234,22 @@ initbuilddir() {
       mv stackless-*/* . || return "$?"
     fi
   ) || return "$?"
+
   ( cd "$BUILDDIR/Modules" || return "$?"
     tar xzvf ../../greenlet-0.3.1.tar.gz
     if test "$IS_PY3"; then
       # TODO(pts): Copy patch(1) this to the Mac OS X chroot.
       patch -p0 <../../greenlet-0.3.1-pycapsule.patch
+    fi
+  ) || return "$?"
+
+  ( cd "$BUILDDIR" || return "$?"
+    mkdir -p advzip || return "$?"
+    cd advzip || return "$?"
+    if test "$UNAME" = Darwin; then
+      tar xjvf ../../advzip.darwin.inst.tbz2 || return "$?"
+    else
+      tar xjvf ../../advzip.inst.tbz2 || return "$?"
     fi
   ) || return "$?"
 
@@ -611,6 +622,13 @@ run_pyrexc() {
 #** Equivalent to zip -9r "$@"
 #** Usage: run_mkzip filename.zip file_or_dir ...
 run_mkzip() {
+  # advzip produces smaller files than `zip -9r', because advzip uses the
+  # 7-Zip implementation of zip.
+  "$PBUILDDIR/advzip/bin/advzip" -a -4 "$@" || return "$?"
+}
+
+# Like run_mkzip, but uses Python instead of advzip.
+old_run_mkzip() {
   local PYTHON="$PBUILDDIR"/python.exe
   test -f "$PBUILDDIR"/minipython && PYTHON="$PBUILDDIR"/minipython
   # python.exe is for the Mac OS X (case insensitive, vs Python/)
@@ -787,10 +805,11 @@ buildpythonlibzip() {
     rm -rf xlib/email/test xlib/bdddb xlib/ctypes xlib/distutils \
            xlib/idlelib xlib/lib-tk xlib/lib2to3 xlib/msilib \
            xlib/plat-aix* xlib/plat-atheos xlib/plat-beos* \
-           xlib/plat-freebsd* xlib/plat-irix* \
+           xlib/plat-freebsd* xlib/plat-irix* xlib/plat-unixware* \
            xlib/plat-mac xlib/plat-netbsd* xlib/plat-next* \
            xlib/plat-os2* xlib/plat-riscos xlib/plat-sunos* \
-           xlib/plat-unixware xlib/test xlib/*.egg-info || return "$?"
+           xlib/site-packages* xlib/sqlite3/test/* xlib/turtle* xlib/tkinter \
+           xlib/test xlib/*.egg-info || return "$?"
     if test "$UNAME" = Darwin; then
       rm -rf xlib/plat-linux2
     else

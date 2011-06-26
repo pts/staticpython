@@ -52,6 +52,7 @@ unset PYTHONPATH PYTHONSTARTUP PYTHONHOME PYTHONCASEOK PYTHONIOENCODING
 
 if test "$NO_BUSYBOX" || test "$UNAME" = Darwin; then  # Darwin is Mac OS X
   BUSYBOX=
+  PATCH='patch -t'  # -t to disable prompts.
 elif test "$BASH_VERSION"; then
   unset BASH_VERSION
   exec ./busybox sh -- "$0" "$@"
@@ -67,6 +68,7 @@ else
     ./busybox rm -f busybox.bin/"$F"
     ./busybox ln -s ../busybox busybox.bin/"$F"
   done
+  PATCH=patch  # `busybox patch' doesn't have -t, but it disables prompts by default.
   ./busybox rm -f busybox.bin/make; ./busybox ln -s ../make busybox.bin/make
   ./busybox rm -f busybox.bin/perl; ./busybox ln -s ../perl busybox.bin/perl
   export PATH="$PWD/busybox.bin"
@@ -239,7 +241,7 @@ initbuilddir() {
     tar xzvf ../../greenlet-0.3.1.tar.gz
     if test "$IS_PY3"; then
       # TODO(pts): Copy patch(1) this to the Mac OS X chroot.
-      patch -p0 -t <../../greenlet-0.3.1-pycapsule.patch || return "$?"
+      $PATCH -p0 <../../greenlet-0.3.1-pycapsule.patch || return "$?"
     fi
   ) || return "$?"
 
@@ -775,10 +777,10 @@ patchlocale() {
       # To make Python able to start up with `export LC_CTYPE=utf-8', which
       # is a useful setting on the Mac OS X.
       if test "$IS_PY3"; then
-        (cd Lib && patch -p1 -t <../../locale.darwin.3.2.patch) || return "$?"
+        (cd Lib && $PATCH -p1 <../../locale.darwin.3.2.patch) || return "$?"
       else
         # Test it with: ./python2.7-static -c 'import locale; print locale.getpreferredencoding()'
-        (cd Lib && patch -p1 -t <../../locale.darwin.2.7.patch) || return "$?"
+        (cd Lib && $PATCH -p1 <../../locale.darwin.2.7.patch) || return "$?"
       fi
     fi
   ) || return "$?"

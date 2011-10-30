@@ -848,6 +848,7 @@ buildpythonlibzip() {
            xlib/plat-mac xlib/plat-netbsd* xlib/plat-next* \
            xlib/plat-os2* xlib/plat-riscos xlib/plat-sunos* \
            xlib/site-packages* xlib/sqlite3/test/* xlib/turtle* xlib/tkinter \
+           xlib/bsddb/test \
            xlib/test xlib/*.egg-info || return "$?"
     if test "$UNAME" = Darwin; then
       rm -rf xlib/plat-linux2 || return "$?"

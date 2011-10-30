@@ -134,7 +134,7 @@ for ARG in "$@"; do
 done
 if test -z "$STEPS"; then
   # Don't include betry here.
-  STEPS="initbuilddir initdeps configure patchsetup fixsetup patchimport patchgetpath patchsqlite patchssl patchlocale makeminipython patchsyncless patchgevent patchgeventmysql patchconcurrence patchpycrypto patchaloaes fixsetup makepython buildpythonlibzip buildtarget"
+  STEPS="initbuilddir initdeps configure fixsemaphore patchsetup fixsetup patchimport patchgetpath patchsqlite patchssl patchlocale makeminipython patchsyncless patchgevent patchgeventmysql patchconcurrence patchpycrypto patchaloaes fixsetup makepython buildpythonlibzip buildtarget"
 fi
 
 INSTS="$INSTS_BASE"
@@ -410,6 +410,18 @@ configure() {
   fixmakefile
 }
 
+fixsemaphore() {
+  ( cd "$BUILDDIR" || return "$?"
+    if test "$UNAME" = Linux; then
+      # The ./configure script doesn't detect proper semaphores on Linux uClibc.
+      #
+      # It does detect on Darwin.
+      perl -pi -e 's@^#define POSIX_SEMAPHORES_NOT_ENABLED 1$@/* #undef POSIX_SEMAPHORES_NOT_ENABLED */@' \
+          pyconfig.h || return "$?"
+    fi
+  ) || return "$?"
+}
+
 fixmakefile() {
   ( cd "$BUILDDIR" || return "$?"
     # `-framework CoreFoundation' is good to be removed on the Mac OS X, to
@@ -459,8 +471,6 @@ fixsetup() {
     #   the libc.
     # * -lz, -lsqlite3, -lreadline and -lbz2 have to be converted to
     #   -l...-staticpython so that out lib*-staticpython.a would be selected.
-    # * _multiprocessing/semaphore.c is needed.
-    perl -pi~ -e 's@\s-lncurses\S*@ -lncurses.5@g; s@^(?:_locale|spwd)(?!\S)@#@; s@\s-(?:lcrypt|lm)(?!\S)@@g; s@\s-(lz|lsqlite3|lreadline|lbz2)(?!\S)@ -$1-staticpython@g; s@^(_multiprocessing)(?!\S)@_multiprocessing _multiprocessing/semaphore.c@' "$BUILDDIR/Modules/Setup" || return "$?"
   fi
   perl -pi~ -e 's@\s-(levent_core|levent_evhttp)(?!\S)@ -$1-staticpython@g' "$BUILDDIR/Modules/Setup" || return "$?"
   sleep 2 || return "$?"  # Wait 2 seconds after the configure script creating Makefile.

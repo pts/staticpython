@@ -388,7 +388,7 @@ _codecs_tw cjkcodecs/_codecs_tw.c
 #xxsubtype xxsubtype.c
 
 # **** pts **** standard
-_multiprocessing _multiprocessing/multiprocessing.c _multiprocessing/socket_connection.c
+_multiprocessing _multiprocessing/multiprocessing.c _multiprocessing/socket_connection.c _multiprocessing/semaphore.c
 _sqlite3 _sqlite/cache.c _sqlite/connection.c _sqlite/cursor.c _sqlite/microprotocols.c _sqlite/module.c _sqlite/prepare_protocol.c _sqlite/row.c _sqlite/statement.c _sqlite/util.c -DSQLITE_OMIT_LOAD_EXTENSION -lsqlite3
 _json _json.c
 _lsprof _lsprof.c rotatingtree.c

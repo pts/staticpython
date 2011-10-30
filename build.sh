@@ -471,6 +471,11 @@ fixsetup() {
     #   the libc.
     # * -lz, -lsqlite3, -lreadline and -lbz2 have to be converted to
     #   -l...-staticpython so that out lib*-staticpython.a would be selected.
+    perl -pi~ -e '
+        s@\s-lncurses\S*@ -lncurses.5@g;
+        s@^(?:_locale|spwd)(?!\S)@#@; s@\s-(?:lcrypt|lm)(?!\S)@@g;
+        s@\s-(lz|lsqlite3|lreadline|lbz2)(?!\S)@ -$1-staticpython@g;
+        ' "$BUILDDIR/Modules/Setup" || return "$?"
   fi
   perl -pi~ -e 's@\s-(levent_core|levent_evhttp)(?!\S)@ -$1-staticpython@g' "$BUILDDIR/Modules/Setup" || return "$?"
   sleep 2 || return "$?"  # Wait 2 seconds after the configure script creating Makefile.

@@ -134,7 +134,9 @@ for ARG in "$@"; do
 done
 if test -z "$STEPS"; then
   # Don't include betry here.
-  STEPS="initbuilddir initdeps configure fixsemaphore patchsetup fixsetup patchimport patchgetpath patchsqlite patchssl patchlocale makeminipython patchsyncless patchgevent patchgeventmysql patchconcurrence patchpycrypto patchaloaes fixsetup makepython buildpythonlibzip buildtarget"
+  # Please note that fixsetup appears multiple times here. This is intentional,
+  # to get Modules/Setup right.
+  STEPS="initbuilddir initdeps configure fixsemaphore patchsetup fixsetup patchimport patchgetpath patchsqlite patchssl patchlocale fixsetup makeminipython patchsyncless patchgevent patchgeventmysql patchconcurrence patchpycrypto patchaloaes fixsetup makepython buildpythonlibzip buildtarget"
 fi
 
 INSTS="$INSTS_BASE"
@@ -173,24 +175,24 @@ echo "Operating system UNAME: $UNAME"
 echo
 
 initbuilddir() {
-  rm -rf "$BUILDDIR"
-  mkdir "$BUILDDIR"
+  rm -rf "$BUILDDIR" || return "$?"
+  mkdir "$BUILDDIR" || return "$?"
 
   if test "$UNAME" = Linux || test "$UNAME" = Darwin; then
     :
   else
     set +x
     echo "fatal: unsupported operating system: $UNAME" >&2
-    exit 2
+    return 2
   fi
 
   if test "$UNAME" = Darwin; then
-    mkdir "$BUILDDIR/build-include"
-    mkdir "$BUILDDIR/build-lib"
+    mkdir "$BUILDDIR/build-include" || return "$?"
+    mkdir "$BUILDDIR/build-lib" || return "$?"
   else
     ( cd "$BUILDDIR" || return "$?"
-      mkdir cross-compiler-i686
-      cd cross-compiler-i686
+      mkdir cross-compiler-i686 || return "$?"
+      cd cross-compiler-i686 || return "$?"
       tar xjvf ../../gcxbase.inst.tbz2 || return "$?"
       tar xjvf ../../gcc.inst.tbz2 || return "$?"
       tar xjvf ../../gcxtool.inst.tbz2 || return "$?"
@@ -205,12 +207,12 @@ initbuilddir() {
   else
     (echo '#!/bin/sh'; echo 'echo i686-pc-linux-gnu') >"$BUILDDIR/config.guess.fake" || return "$?"
   fi
-  chmod +x "$BUILDDIR/config.guess.fake"
+  chmod +x "$BUILDDIR/config.guess.fake" || return "$?"
 
   # Check the C compiler.
   (echo '#include <stdio.h>'
    echo 'main() { return!printf("Hello, World!\n"); }'
-  ) >"$BUILDDIR/hello.c"
+  ) >"$BUILDDIR/hello.c" || return "$?"
   if ! $CC -o "$BUILDDIR/hello" "$BUILDDIR/hello.c"; then
     set +x
     echo "fatal: the C compiler doesn't work" >&2
@@ -219,7 +221,7 @@ initbuilddir() {
     fi
     exit 2
   fi
-  $STRIP "$BUILDDIR/hello"
+  $STRIP "$BUILDDIR/hello" || return "$?"
   local OUT="$("$BUILDDIR/hello")"
   test "$?" = 0
   test "$OUT" = "Hello, World!"
@@ -238,7 +240,7 @@ initbuilddir() {
   ) || return "$?"
 
   ( cd "$BUILDDIR/Modules" || return "$?"
-    tar xzvf ../../greenlet-0.3.1.tar.gz
+    tar xzvf ../../greenlet-0.3.1.tar.gz || return "$?"
     if test "$IS_PY3"; then
       # TODO(pts): Copy patch(1) this to the Mac OS X chroot.
       $PATCH -p0 <../../greenlet-0.3.1-pycapsule.patch || return "$?"
@@ -452,9 +454,9 @@ patchsetup() {
   # This must be run after the configure step, because configure overwrites
   # Modules/Setup
   if test "$IS_PY3"; then
-    cp Modules.Setup.3.2.static "$BUILDDIR/Modules/Setup"
+    cp Modules.Setup.3.2.static "$BUILDDIR/Modules/Setup" || return "$?"
   else
-    cp Modules.Setup.2.7.static "$BUILDDIR/Modules/Setup"
+    cp Modules.Setup.2.7.static "$BUILDDIR/Modules/Setup" || return "$?"
   fi
   # Please note that fixsetup has to be called now, partially because of
   # fixing the Makefile.
@@ -487,27 +489,27 @@ fixsetup() {
   fixmakefile
   if test "$IS_PY3"; then
     ( cd "$BUILDDIR" || return "$?"
-      grep '^_thread ' Modules/Setup.config
-      grep 'signal' Modules/Setup.config
+      grep '^_thread ' Modules/Setup.config || return "$?"
+      grep 'signal' Modules/Setup.config || return "$?"
     ) || return "$?"
   fi
 }
 
 patchimport() {
   # This patch is idempotent.
-  perl -pi~ -e 's@#ifdef HAVE_DYNAMIC_LOADING(?!_NOT)@#ifdef HAVE_DYNAMIC_LOADING_NOT  /* StaticPython */@g' "$BUILDDIR"/Python/import.c "$BUILDDIR"/Python/importdl.c
+  perl -pi~ -e 's@#ifdef HAVE_DYNAMIC_LOADING(?!_NOT)@#ifdef HAVE_DYNAMIC_LOADING_NOT  /* StaticPython */@g' "$BUILDDIR"/Python/import.c "$BUILDDIR"/Python/importdl.c || return "$?"
 }
 
 patchgetpath() {
   # This patch is idempotent.
   # TODO(pts): Make sure that the source string is there for patching.
   # TODO(pts): Make this repatch if calculate_path.*.c is modified.
-  perl -pi~ -0777 -e 's@\s+static\s+void\s+calculate_path(?!   )\s*\(\s*void\s*\)\s*{@\n\nstatic void calculate_path(void);  /* StaticPython */\nstatic void calculate_path_not(void) {@g' "$BUILDDIR"/Modules/getpath.c
+  perl -pi~ -0777 -e 's@\s+static\s+void\s+calculate_path(?!   )\s*\(\s*void\s*\)\s*{@\n\nstatic void calculate_path(void);  /* StaticPython */\nstatic void calculate_path_not(void) {@g' "$BUILDDIR"/Modules/getpath.c || return "$?"
   if ! grep -q StaticPython-appended "$BUILDDIR/Modules/getpath.c"; then
     if test "$IS_PY3"; then
-      cat calculate_path.3.2.c >>"$BUILDDIR/Modules/getpath.c"
+      cat calculate_path.3.2.c >>"$BUILDDIR/Modules/getpath.c" || return "$?"
     else
-      cat calculate_path.2.7.c >>"$BUILDDIR/Modules/getpath.c"
+      cat calculate_path.2.7.c >>"$BUILDDIR/Modules/getpath.c" || return "$?"
     fi
   fi
 }
@@ -515,11 +517,11 @@ patchgetpath() {
 patchsqlite() {
   # This patch is idempotent.
   if ! grep '^#define MODULE_NAME ' "$BUILDDIR/Modules/_sqlite/util.h"; then
-    perl -pi~ -0777 -e 's@\n#define PYSQLITE_UTIL_H\n@\n#define PYSQLITE_UTIL_H\n#define MODULE_NAME "_sqlite3"  /* StaticPython */\n@' "$BUILDDIR/Modules/_sqlite/util.h"
+    perl -pi~ -0777 -e 's@\n#define PYSQLITE_UTIL_H\n@\n#define PYSQLITE_UTIL_H\n#define MODULE_NAME "_sqlite3"  /* StaticPython */\n@' "$BUILDDIR/Modules/_sqlite/util.h" || return "$?"
   fi    
   for F in "$BUILDDIR/Modules/_sqlite/"*.c; do
     if ! grep -q '^#include "util.h"' "$F"; then
-      perl -pi~ -0777 -e 's@\A@#include "util.h"  /* StaticPython */\n@' "$F"
+      perl -pi~ -0777 -e 's@\A@#include "util.h"  /* StaticPython */\n@' "$F" || return "$?"
     fi    
   done
 }
@@ -529,7 +531,7 @@ generate_loader_py() {
   local PY_MODNAME="$2"
   local PY_FILENAME="Lib/${PY_MODNAME//.//}.py"
   : Generating loader "$PY_FILENAME"
-  echo "import sys; import $CEXT_MODNAME; sys.modules[__name__] = $CEXT_MODNAME" >"$PY_FILENAME"
+  echo "import sys; import $CEXT_MODNAME; sys.modules[__name__] = $CEXT_MODNAME" >"$PY_FILENAME" || return "$?"
 }
 
 patch_and_copy_cext() {
@@ -549,15 +551,15 @@ patch_and_copy_cext() {
     # For PyCrypto.
     s@^[ \t]*(#[ \t]*define\s+MODULE_NAME\s+\S+)@#define MODULE_NAME $ENV{CEXT_MODNAME}@mg;
     s@^[ \t]*(#[ \t]*define\s+MODULE_NAME\s+\S+.*triple DES.*)@#define MODULE_NAME _Crypto_Cipher_DES3@mg;
-  '
+  ' || return "$?"
 }
 
 enable_module() {
   local CEXT_MODNAME="$1"
   export CEXT_MODNAME
   : Enabling module: "$CEXT_MODNAME"
-  grep -qE "^#?$CEXT_MODNAME " Modules/Setup
-  perl -0777 -pi -e 's@^#$ENV{CEXT_MODNAME} @$ENV{CEXT_MODNAME} @mg' Modules/Setup
+  grep -qE "^#?$CEXT_MODNAME " Modules/Setup || return "$?"
+  perl -0777 -pi -e 's@^#$ENV{CEXT_MODNAME} @$ENV{CEXT_MODNAME} @mg' Modules/Setup || return "$?"
 }
 
 patchssl() {
@@ -599,7 +601,7 @@ patchgevent() {
     rm -f gevent.dir/gevent/win32util.py || return "$?"
     generate_loader_py _gevent_core gevent.core || return "$?"
     patch_and_copy_cext gevent.dir/gevent/core.c Modules/gevent/_gevent_core.c || return "$?"
-    cat >Modules/gevent/libevent.h <<'END'
+    cat >Modules/gevent/libevent.h <<'END' || return "$?"
 /**** pts ****/
 #include "sys/queue.h"
 #define LIBEVENT_HTTP_MODERN
@@ -639,7 +641,7 @@ patchgeventmysql() {
 }
 
 run_pyrexc() {
-  PYTHONPATH="$PBUILDDIR/Lib:$PWD/pyrex.dir" "$PBUILDDIR"/minipython -S -W ignore::DeprecationWarning -c "from Pyrex.Compiler.Main import main; main(command_line=1)" "$@"
+  PYTHONPATH="$PBUILDDIR/Lib:$PWD/pyrex.dir" "$PBUILDDIR"/minipython -S -W ignore::DeprecationWarning -c "from Pyrex.Compiler.Main import main; main(command_line=1)" "$@" || return "$?"
 }
 
 #** Equivalent to zip -9r "$@"
@@ -677,7 +679,7 @@ old_run_mkzip() {
   for filename in sys.argv[2:]:
     for filename2 in All(filename):
       z.write(filename2)
-  z.close()' "$@"
+  z.close()' "$@" || return "$?"
 }
 
 patchconcurrence() {
@@ -763,7 +765,7 @@ patchpycrypto() {
     perl -0777 -pi -e 's@ Py_InitModule\("Crypto[.]\w+[.]"@ Py_InitModule(""@g' \
         Modules/pycrypto/hash_template.c \
         Modules/pycrypto/stream_template.c \
-        Modules/pycrypto/block_template.c
+        Modules/pycrypto/block_template.c || return "$?"
 
   ) || return "$?"
 }
@@ -862,7 +864,7 @@ buildpythonlibzip() {
     fi
     cd xlib || return "$?"
     rm -f *~ */*~ || return "$?"
-    rm -f ../xlib.zip
+    rm -f ../xlib.zip || return "$?"
     run_mkzip ../xlib.zip * || return "$?"
   ) || return "$?"
 }
@@ -917,25 +919,27 @@ for my $fn (@ARGV) {
     die if length($head)!=syswrite($f,$head);
   }
   die "file error\n" if !close($f);
-}' -- "$@"
+}' -- "$@" || return "$?"
 }
 
 buildtarget() {
-  cp "$BUILDDIR"/python.exe "$BUILDDIR/$TARGET"
-  $STRIP "$BUILDDIR/$TARGET"
-  test "$UNAME" = Linux && do_elfosfix "$BUILDDIR/$TARGET"
-  cat "$BUILDDIR"/xlib.zip >>"$BUILDDIR/$TARGET"
-  cp "$BUILDDIR/$TARGET" "$TARGET"
-  ls -l "$TARGET"
+  cp "$BUILDDIR"/python.exe "$BUILDDIR/$TARGET" || return "$?"
+  $STRIP "$BUILDDIR/$TARGET" || return "$?"
+  if test "$UNAME" = Linux; then
+    do_elfosfix "$BUILDDIR/$TARGET" || return "$?"
+  fi
+  cat "$BUILDDIR"/xlib.zip >>"$BUILDDIR/$TARGET" || return "$?"
+  cp "$BUILDDIR/$TARGET" "$TARGET" || return "$?"
+  ls -l "$TARGET" || return "$?"
 }
 
 betry() {
   # This step is optional. It tries the freshly built binary.
-  mkdir -p bch be/bardir
-  echo "print 'FOO'" >be/foo.py
-  echo "print 'BAR'" >be/bardir/bar.py
-  cp "$TARGET" be/sp
-  cp "$TARGET" bch/sp
+  mkdir -p bch be/bardir || return "$?"
+  echo "print 'FOO'" >be/foo.py || return "$?"
+  echo "print 'BAR'" >be/bardir/bar.py || return "$?"
+  cp "$TARGET" be/sp || return "$?"
+  cp "$TARGET" bch/sp || return "$?"
   export PYTHONPATH=bardir
   unset PYTHONHOME
   #unset PYTHONPATH
@@ -945,16 +949,27 @@ betry() {
 fail_step() {
   set +ex
   echo "Failed in step $2 with code $1"
+  echo "Steps remaining after failure: $3"
   exit "$1"
 }
 
-for STEP in $STEPS; do
+XSTEPS="$(echo $STEPS) "  # Collapse whitespace etc.
+XSTEPS0="$XSTEPS"
+
+for STEP in $XSTEPS; do
   echo "Running step: $STEP"
-  set -ex
-  $STEP || fail_step "$?" "$STEP"
-  set +ex
+  XSTEPS="${XSTEPS#* }"
+  echo "Steps remaining: $XSTEPS"
+  set -x
+  # set -e (abort on error) has no effect in functions in busybox sh, so we
+  # don't enable it.
+  if ! $STEP; then
+    set +x
+    fail_step "$?" "$STEP" "$XSTEPS"
+  fi
+  set +x
 done
-echo "OK running steps: $STEPS"
+echo "OK running steps: $XSTEPS0"
 
 exit 0
 

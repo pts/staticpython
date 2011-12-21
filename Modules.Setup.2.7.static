@@ -522,6 +522,9 @@ greenlet greenlet-0.3.1/greenlet.c
 
 # **** pts **** extra modules for stacklessxx
 #_msgpack_msgpack msgpack/_msgpack_msgpack.c
+#_tokyocabinet_btree tokyocabinet/_tokyocabinet_btree.c -ltokyocabinet-staticpython -lpthread
+#_tokyocabinet_hash tokyocabinet/_tokyocabinet_hash.c -ltokyocabinet-staticpython -lpthread
+#_tokyocabinet_table tokyocabinet/_tokyocabinet_table.c -ltokyocabinet-staticpython -lpthread
 
 # **** pts **** crypto
 #_Crypto_Hash_MD2 pycrypto/_Crypto_Hash_MD2.c

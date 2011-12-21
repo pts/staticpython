@@ -83,6 +83,7 @@ INSTS_BASE="bzip2-1.0.5.inst.tbz2 ncurses-5.6.inst.tbz2 readline-5.2.inst.tbz2 s
 
 STEPS=
 USE_SSL=
+USE_TC=
 TARGET=python2.7-static
 PYTHONTBZ2=Python-2.7.1.tar.bz2
 IS_CO=
@@ -109,6 +110,7 @@ for ARG in "$@"; do
     IS_XX=1  # IS_CO=1 must also be set.
     ISP_PY3=
     USE_SSL=1
+    USE_TC=1
   elif test "$ARG" = python || test "$ARG" = python2.7; then
     TARGET=python2.7-static
     PYTHONTBZ2=Python-2.7.1.tar.bz2
@@ -149,7 +151,7 @@ if test -z "$STEPS"; then
   # Don't include betry here.
   # Please note that fixsetup appears multiple times here. This is intentional,
   # to get Modules/Setup right.
-  STEPS="initbuilddir initdeps configure fixsemaphore patchsetup fixsetup patchimport patchgetpath patchsqlite patchssl patchlocale fixsetup makeminipython extractpyrex patchsyncless patchgevent patchgeventmysql patchmsgpack patchconcurrence patchpycrypto patchaloaes fixsetup makepython buildpythonlibzip buildtarget"
+  STEPS="initbuilddir initdeps buildlibssl buildlibevent2 buildlibtc configure fixsemaphore patchsetup fixsetup patchimport patchgetpath patchsqlite patchssl patchlocale fixsetup makeminipython extractpyrex patchsyncless patchgevent patchgeventmysql patchmsgpack patchpythontokyocabinet patchconcurrence patchpycrypto patchaloaes fixsetup makepython buildpythonlibzip buildtarget"
 fi
 
 INSTS="$INSTS_BASE"
@@ -184,6 +186,7 @@ echo "Using Python source distribution: $PYTHONTBZ2"
 echo "Will run steps: $STEPS"
 echo "Is adding coroutine libraries: $IS_CO"
 echo "Is using OpenSSL for SSL functionality: $USE_SSL"
+echo "Is using Tokyo Cabinet database: $USE_TC"
 echo "Operating system UNAME: $UNAME"
 echo
 
@@ -279,12 +282,16 @@ initdeps() {
   else  # Linux
     extractinsts || return "$?"
   fi
+  # These are moved to $STEPS:
+  #buildlibssl     # Needs libz if enabled.
+  #buildlibevent2  # Needs libssl if enabled.
+  #buildlibtc      # Needs libz and libbz2 if enabled.
 }
 
 builddeps() {
   # The `|| return "$?"' clauses are needed by bash 3.2.17 on Mac OS X.
+  # This is an alternative to extractinsts
   buildlibz || return "$?"
-  buildlibssl || return "$?"
   buildlibbz2 || return "$?"
   buildlibreadline || return "$?"
   buildlibsqlite3 || return "$?"
@@ -300,6 +307,37 @@ buildlibbz2() {
     make CC="$CC" || return "$?"
     cp libbz2.a ../build-lib/libbz2-staticpython.a || return "$?"
     cp bzlib.h ../build-include/ || return "$?"
+  ) || return "$?"
+}
+
+buildlibtc() {
+  test "$USE_TC" || return 0
+  ( cd "$BUILDDIR" || return "$?"
+    rm -rf tokyocabinet-1.4.47 || return "$?"
+    tar xzvf ../tokyocabinet-1.4.47.tar.gz || return "$?"
+    cd tokyocabinet-1.4.47 || return "$?"
+    #if test "$UNAME" = Darwin; then
+    #  : No support for xx on Darwin.  # See below.
+    #  return 1
+    #fi
+    # TODO(pts): Add -staticpython for libz and libbz2 on Darwin:
+    # LIBS="-lbz2  $LIBS"
+    # LIBS="-lz  $LIBS"
+    if test "$UNAME" = Darwin; then
+      # The configure script doesn't seem to care much.
+      # This seems to work even on Linux.
+      perl -pi~ -e 's@^ *(LIBS="-l(?:z|bz2))@$1-staticpython @' configure || return "$?"
+    fi
+    # TODO(pts): Check
+    perl -pi~ -e 's@nanl\([^()]*\)@NAN@g' *.c || return "$?"  # There is no nanl(...) function in uClibc.
+    ./configure --prefix=/dev/null/missing --disable-shared || return "$?"
+    perl -pi~ -e 's@\s-g(?!\S)@@g, s@\s-O\d*(?!\S)@ -O2@g if s@^CFLAGS\s*=@CFLAGS = @; s@ -I\S+@ @g, s@=@= -I.@ if s@^CPPFLAGS\s*=\s*@CPPFLAGS = @' Makefile || return "$?"
+    make libtokyocabinet.a || return "$?"
+    $RANLIB libtokyocabinet.a || return "$?"
+    cp libtokyocabinet.a ../build-lib/libtokyocabinet-staticpython.a || return "$?"
+    # tcadb.h  tcbdb.h  tcfdb.h  tchdb.h  tctdb.h  tcutil.h
+    # Don't copy: md5.h myconf.h
+    cp tc*.h ../build-include/ || return "$?"
   ) || return "$?"
 }
 
@@ -406,8 +444,6 @@ extractinsts() {
     ln -s cross-compiler-i686/lib     "$BUILDDIR/build-lib"
     ln -s cross-compiler-i686/include "$BUILDDIR/build-include"
   fi
-  buildlibssl     # Needs zlib if libssl is enabled.
-  buildlibevent2  # Needs libssl if libssl is enabled.
 }
 
 configure() {
@@ -558,9 +594,9 @@ patch_and_copy_cext() {
   : Copying and patching "$SOURCE_C" to "$TARGET_C", CEXT_MODNAME="$CEXT_MODNAME"
   <"$SOURCE_C" >"$TARGET_C" perl -0777 -pe '
     s@^(PyMODINIT_FUNC)\s+\w+\(@$1 init$ENV{CEXT_MODNAME}(@mg;
-    s@( Py_InitModule\d*)\("\w[\w.]*",@$1("$ENV{CEXT_MODNAME}",@g;
+    s@( Py_InitModule\d*)\(\s*"\w[\w.]*",@$1("$ENV{CEXT_MODNAME}",@g;
     # Cython version of the one below.
-    s@( Py_InitModule\d*\(__Pyx_NAMESTR\()"\w[\w.]*"\),@$1"$ENV{CEXT_MODNAME}"),@g;
+    s@( Py_InitModule\d*\(\s*__Pyx_NAMESTR\()"\w[\w.]*"\),@$1"$ENV{CEXT_MODNAME}"),@g;
     # For PyCrypto.
     s@^[ \t]*(#[ \t]*define\s+MODULE_NAME\s+\S+)@#define MODULE_NAME $ENV{CEXT_MODNAME}@mg;
     s@^[ \t]*(#[ \t]*define\s+MODULE_NAME\s+\S+.*triple DES.*)@#define MODULE_NAME _Crypto_Cipher_DES3@mg;
@@ -693,6 +729,25 @@ old_run_mkzip() {
     for filename2 in All(filename):
       z.write(filename2)
   z.close()' "$@" || return "$?"
+}
+
+patchpythontokyocabinet() {
+  test "$IS_XX" || return 0
+  test "$USE_TC" || return 0
+  ( cd "$BUILDDIR" || return "$?"
+    rm -rf python-tokyocabinet-* tokyocabinet.dir Lib/tokyocabinet Modules/tokyocabinet || return "$?"
+    tar xjvf ../python-tokyocabinet-20111221.tar.bz2 || return "$?"
+    mv python-tokyocabinet-20111221 tokyocabinet.dir || return "$?"
+    mkdir Lib/tokyocabinet Modules/tokyocabinet || return "$?"
+    # This is just an empty __init__.py.
+    cp tokyocabinet.dir/tokyocabinet/*.py Lib/tokyocabinet/ || return "$?"
+    local M
+    for M in btree hash table; do
+      patch_and_copy_cext tokyocabinet.dir/tokyocabinet/$M.c Modules/tokyocabinet/_tokyocabinet_$M.c || return "$?"
+      generate_loader_py _tokyocabinet_$M tokyocabinet.$M || return "$?"
+      enable_module _tokyocabinet_$M || return "$?"
+    done
+  ) || return "$?"
 }
 
 extractpyrex() {
@@ -1011,7 +1066,7 @@ for STEP in $XSTEPS; do
   fi
   set +x
 done
-echo "OK running steps: $XSTEPS0"
+echo "OK running $0 ${TARGET%-static} $XSTEPS0"
 
 exit 0
 

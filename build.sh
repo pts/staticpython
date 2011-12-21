@@ -92,36 +92,49 @@ for ARG in "$@"; do
     TARGET=stackless2.7-static
     PYTHONTBZ2=stackless-271-export.tar.bz2
     IS_CO=
+    IS_XX=
     IS_PY3=
     USE_SSL=
   elif test "$ARG" = stacklessco || test "$ARG" = stacklessco2.7; then
     TARGET=stacklessco2.7-static
     PYTHONTBZ2=stackless-271-export.tar.bz2
     IS_CO=1
+    IS_XX=
+    ISP_PY3=
+    USE_SSL=1
+  elif test "$ARG" = stacklessxx || test "$ARG" = stacklessxx2.7; then
+    TARGET=stacklessxx2.7-static
+    PYTHONTBZ2=stackless-271-export.tar.bz2
+    IS_CO=1
+    IS_XX=1  # IS_CO=1 must also be set.
     ISP_PY3=
     USE_SSL=1
   elif test "$ARG" = python || test "$ARG" = python2.7; then
     TARGET=python2.7-static
     PYTHONTBZ2=Python-2.7.1.tar.bz2
     IS_CO=
+    IS_XX=
     IS_PY3=
     USE_SSL=
   elif test "$ARG" = python3.2; then
     TARGET=python3.2-static
     PYTHONTBZ2=Python-3.2.tar.bz2
     IS_CO=
+    IS_XX=
     IS_PY3=1
     USE_SSL=
   elif test "$ARG" = stackless3.2; then
     TARGET=stackless3.2-static
     PYTHONTBZ2=stackless-32-export.tar.bz2
     IS_CO=
+    IS_XX=
     IS_PY3=1
     USE_SSL=
   elif test "$ARG" = stacklessxl3.2; then
     TARGET=stacklessxl3.2-static
     PYTHONTBZ2=stackless-32-export.tar.bz2
     IS_CO=
+    IS_XX=
     IS_PY3=1
     USE_SSL=1
   elif test "$ARG" = usessl; then
@@ -136,7 +149,7 @@ if test -z "$STEPS"; then
   # Don't include betry here.
   # Please note that fixsetup appears multiple times here. This is intentional,
   # to get Modules/Setup right.
-  STEPS="initbuilddir initdeps configure fixsemaphore patchsetup fixsetup patchimport patchgetpath patchsqlite patchssl patchlocale fixsetup makeminipython patchsyncless patchgevent patchgeventmysql patchconcurrence patchpycrypto patchaloaes fixsetup makepython buildpythonlibzip buildtarget"
+  STEPS="initbuilddir initdeps configure fixsemaphore patchsetup fixsetup patchimport patchgetpath patchsqlite patchssl patchlocale fixsetup makeminipython extractpyrex patchsyncless patchgevent patchgeventmysql patchmsgpack patchconcurrence patchpycrypto patchaloaes fixsetup makepython buildpythonlibzip buildtarget"
 fi
 
 INSTS="$INSTS_BASE"
@@ -682,14 +695,43 @@ old_run_mkzip() {
   z.close()' "$@" || return "$?"
 }
 
+extractpyrex() {
+  test "$IS_CO" || return 0
+  ( cd "$BUILDDIR" || return "$?"
+    rm -rf pyrex.dir
+    tar xzvf ../Pyrex-0.9.9.tar.gz || return "$?"
+    mv Pyrex-0.9.9 pyrex.dir || return "$?"
+  ) || return "$?"
+}
+
+# Depends on extractpyrex.
+patchmsgpack() {
+  test "$IS_XX" || return 0
+  ( cd "$BUILDDIR" || return "$?"
+    rm -rf msgpack-* msgpack.dir Lib/msgpack Modules/msgpack || return "$?"
+    tar xjvf ../msgpack-python-20111221.tar.bz2 || return "$?"
+    mv msgpack-python-20111221 msgpack.dir || return "$?"
+    local VERSION=$(grep '^version = ' msgpack.dir/setup.py)
+    test "$VERSION" || return "$?"
+    (cd msgpack.dir/msgpack && $PATCH -p0 <../../../msgpack_pyx.patch) || return "$?"
+    mv msgpack.dir/msgpack/_msgpack.pyx msgpack.dir/msgpack/_msgpack_msgpack.pyx || return "$?"
+    run_pyrexc msgpack.dir/msgpack/_msgpack_msgpack.pyx || return "$?"
+    mkdir Lib/msgpack Modules/msgpack || return "$?"
+    echo "$VERSION" >Lib/msgpack/__version__.py || return "$?"
+    cp msgpack.dir/msgpack/__init__.py Lib/msgpack/ || return "$?"
+    cp msgpack.dir/msgpack/_msgpack_msgpack.c msgpack.dir/msgpack/*.h Modules/msgpack/ || return "$?"
+    generate_loader_py _msgpack_msgpack msgpack._msgpack || return "$?"
+    enable_module _msgpack_msgpack || return "$?"
+  ) || return "$?"
+}
+
+# Depends on extractpyrex.
 patchconcurrence() {
   test "$IS_CO" || return 0
   ( cd "$BUILDDIR" || return "$?"
-    rm -rf concurrence-* concurrence.dir pyrex.dir Lib/concurrence Modules/concurrence || return "$?"
+    rm -rf concurrence-* concurrence.dir Lib/concurrence Modules/concurrence || return "$?"
     tar xzvf ../concurrence-0.3.1.tar.gz || return "$?"
     mv concurrence-0.3.1 concurrence.dir || return "$?"
-    tar xzvf ../Pyrex-0.9.9.tar.gz || return "$?"
-    mv Pyrex-0.9.9 pyrex.dir || return "$?"
     mkdir Lib/concurrence Modules/concurrence || return "$?"
     # TODO(pts): Fail if any of the pipe commands fail.
     (cd concurrence.dir/lib && tar c $(find concurrence -type f -iname '*.py')) |
@@ -725,7 +767,7 @@ END
 patchpycrypto() {
   test "$IS_CO" || return 0
   ( cd "$BUILDDIR" || return "$?"
-    rm -rf pycrypto-* pycrypto.dir pyrex.dir Lib/Crypto Modules/pycrypto || return "$?"
+    rm -rf pycrypto-* pycrypto.dir Lib/Crypto Modules/pycrypto || return "$?"
     tar xzvf ../pycrypto-2.3.tar.gz || return "$?"
     mv pycrypto-2.3 pycrypto.dir || return "$?"
     mkdir Lib/Crypto Modules/pycrypto Modules/pycrypto/libtom || return "$?"
@@ -949,7 +991,7 @@ betry() {
 fail_step() {
   set +ex
   echo "Failed in step $2 with code $1"
-  echo "Steps remaining after failure: $3"
+  echo "Fix and retry with: $0 ${TARGET%-static} $2 $3"
   exit "$1"
 }
 

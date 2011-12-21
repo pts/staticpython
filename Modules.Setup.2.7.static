@@ -520,6 +520,9 @@ greenlet greenlet-0.3.1/greenlet.c
 #_concurrence_database_mysql_mysql concurrence/concurrence.database.mysql._mysql.c
 #_geventmysql_mysql geventmysql/geventmysql._mysql.c
 
+# **** pts **** extra modules for stacklessxx
+#_msgpack_msgpack msgpack/_msgpack_msgpack.c
+
 # **** pts **** crypto
 #_Crypto_Hash_MD2 pycrypto/_Crypto_Hash_MD2.c
 #_Crypto_Hash_MD4 pycrypto/_Crypto_Hash_MD4.c

@@ -1,0 +1,386 @@
+--- hash.c.orig	2011-12-22 12:49:48.744118746 +0100
++++ hash.c	2011-12-22 12:45:10.156022360 +0100
+@@ -1,19 +1,22 @@
+ #include <Python.h>
+ #include <tchdb.h>
+ #include <tcutil.h>
+ #include <limits.h>
+ 
+ 
+ static PyObject *HashError;
+ 
+ 
++/* TODO(pts): doc: thread safety issue:
++ * error reporting is not thread-safe (it uses global state).
++ */
+ static void
+ raise_hash_error(TCHDB *db)
+ {
+     int code = tchdbecode(db);
+     const char *msg = tchdberrmsg(code);
+     
+     if (code == TCENOREC)
+     {
+         PyErr_SetString(PyExc_KeyError, msg);
+     }
+@@ -739,20 +742,268 @@
+     free(vbuf);
+     
+     if (!value)
+     {
+         return NULL;
+     }
+     
+     return value;
+ }
+ 
++/* --- */
++
++/* DBIter */
++typedef struct {
++    PyObject_HEAD
++    PyObject *db;
++} DBIter;
++
++
++/* DBIter_tp_traverse */
++static int
++DBIter_tp_traverse(DBIter *self, visitproc visit, void *arg)
++{
++    Py_VISIT(self->db);
++    return 0;
++}
++
++
++/* DBIter_tp_clear */
++static int
++DBIter_tp_clear(DBIter *self)
++{
++    Py_CLEAR(self->db);
++    return 0;
++}
++
++
++/* DBIter_tp_dealloc */
++static void
++DBIter_tp_dealloc(DBIter *self)
++{
++    DBIter_tp_clear(self);
++    Py_TYPE(self)->tp_free((PyObject *)self);
++}
++
++
++/* DBIter_tp_new */
++static PyObject *
++DBIter_tp_new(PyTypeObject *type, PyObject *db)
++{
++    DBIter *self = (DBIter *)type->tp_alloc(type, 0);
++    if (!self) {
++        return NULL;
++    }
++    /* self->db */
++    Py_INCREF(db);
++    self->db = db;
++    return (PyObject *)self;
++}
++
++
++/* DBIter.__length_hint__ */
++PyDoc_STRVAR(DBIter_length_hint_doc,
++"Private method returning an estimate of len(list(db)).");
++
++static PyObject *
++DBIter_length_hint(DBIter *self)
++{
++    Py_ssize_t len = PyMapping_Length(self->db);
++    if (len < 0) {
++        return NULL;
++    }
++    return PyLong_FromSsize_t(len);
++}
++
++
++/* DBIter_tp_methods */
++static PyMethodDef DBIter_tp_methods[] = {
++    {"__length_hint__", (PyCFunction)DBIter_length_hint, METH_NOARGS,
++     DBIter_length_hint_doc},
++    {NULL}  /* Sentinel */
++};
++
++
++
++
++/* new_HDBIter */
++static PyObject *
++new_HDBIter(Hash *self, PyTypeObject *type)
++{
++    PyObject *iter = DBIter_tp_new(type, (PyObject *)self);
++    bool success;
++    if (!iter) {
++        return NULL;
++    }
++    /* TODO(pts): doc: thread safety issue:
++     * There is only a single iterator per HDB.
++     */
++    Py_BEGIN_ALLOW_THREADS
++    success = tchdbiterinit(self->db);
++    Py_END_ALLOW_THREADS
++    if (!success) {
++        Py_DECREF(iter);
++        raise_hash_error(self->db);
++        return NULL;
++    }
++    /* It's not OK (?) to change the hash during iteration, but that's not
++     * enforced.
++     */
++    return iter;
++}
++
++/* HDBIterKeysType.tp_iternext */
++static PyObject *
++HDBIterKeys_tp_iternext(DBIter *self)
++{
++    Hash *hdb = (Hash *)self->db;
++    void *key;
++    int key_size;
++    PyObject *pykey;
++
++    Py_BEGIN_ALLOW_THREADS
++    key = tchdbiternext(hdb->db, &key_size);
++    Py_END_ALLOW_THREADS
++    if (!key) {
++        if (tchdbecode(hdb->db) == TCENOREC) {
++            PyErr_SetNone(PyExc_StopIteration);
++        } else {
++            raise_hash_error(hdb->db);
++        }
++        return NULL;
++    }
++    pykey = PyBytes_FromStringAndSize(key, key_size);
++    tcfree(key);
++    return pykey;
++}
++
++
++/* HDBIterKeysType */
++static PyTypeObject HDBIterKeysType = {
++    PyVarObject_HEAD_INIT(NULL, 0)
++    "tokyocabinet.hash.HashIterKeys",          /*tp_name*/
++    sizeof(DBIter),                           /*tp_basicsize*/
++    0,                                        /*tp_itemsize*/
++    (destructor)DBIter_tp_dealloc,            /*tp_dealloc*/
++    0,                                        /*tp_print*/
++    0,                                        /*tp_getattr*/
++    0,                                        /*tp_setattr*/
++    0,                                        /*tp_compare*/
++    0,                                        /*tp_repr*/
++    0,                                        /*tp_as_number*/
++    0,                                        /*tp_as_sequence*/
++    0,                                        /*tp_as_mapping*/
++    0,                                        /*tp_hash */
++    0,                                        /*tp_call*/
++    0,                                        /*tp_str*/
++    0,                                        /*tp_getattro*/
++    0,                                        /*tp_setattro*/
++    0,                                        /*tp_as_buffer*/
++    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,  /*tp_flags*/
++    0,                                        /*tp_doc*/
++    (traverseproc)DBIter_tp_traverse,         /*tp_traverse*/
++    (inquiry)DBIter_tp_clear,                 /*tp_clear*/
++    0,                                        /*tp_richcompare*/
++    0,                                        /*tp_weaklistoffset*/
++    PyObject_SelfIter,                        /*tp_iter*/
++    (iternextfunc)HDBIterKeys_tp_iternext,    /*tp_iternext*/
++    DBIter_tp_methods,                        /*tp_methods*/
++};
++
++
++
++/* HDBIterItemsType.tp_iternext */
++static PyObject *
++HDBIterItems_tp_iternext(DBIter *self)
++{
++    Hash *hdb = (Hash *)self->db;
++    TCXSTR *key, *value;
++    PyObject *pykey, *pyvalue, *pyresult = NULL;
++    bool success1;
++    int result2;
++
++    key = tcxstrnew();
++    value = tcxstrnew();
++    Py_BEGIN_ALLOW_THREADS
++    success1 = tchdbiternext3(hdb->db, key, value);
++    result2 = success1 ? 0 : tchdbecode(hdb->db);
++    Py_END_ALLOW_THREADS
++    if (!success1) {
++        if (result2 == TCENOREC) {
++            PyErr_SetNone(PyExc_StopIteration);
++        } else {
++            raise_hash_error(hdb->db);
++        }
++        return NULL;
++    }
++    else {
++        pykey = PyBytes_FromStringAndSize(tcxstrptr(key), tcxstrsize(key));
++        pyvalue = PyBytes_FromStringAndSize(tcxstrptr(value), tcxstrsize(value));
++        if (pykey && pyvalue) {
++            pyresult = PyTuple_Pack(2, pykey, pyvalue);
++        }
++        Py_XDECREF(pykey);
++        Py_XDECREF(pyvalue);
++    }
++    tcxstrdel(key);
++    tcxstrdel(value);
++    return pyresult;
++}
++
++
++/* HDBIterItemsType */
++static PyTypeObject HDBIterItemsType = {
++    PyVarObject_HEAD_INIT(NULL, 0)
++    "tokyocabinet.hash.HashIterItems",        /*tp_name*/
++    sizeof(DBIter),                           /*tp_basicsize*/
++    0,                                        /*tp_itemsize*/
++    (destructor)DBIter_tp_dealloc,            /*tp_dealloc*/
++    0,                                        /*tp_print*/
++    0,                                        /*tp_getattr*/
++    0,                                        /*tp_setattr*/
++    0,                                        /*tp_compare*/
++    0,                                        /*tp_repr*/
++    0,                                        /*tp_as_number*/
++    0,                                        /*tp_as_sequence*/
++    0,                                        /*tp_as_mapping*/
++    0,                                        /*tp_hash */
++    0,                                        /*tp_call*/
++    0,                                        /*tp_str*/
++    0,                                        /*tp_getattro*/
++    0,                                        /*tp_setattro*/
++    0,                                        /*tp_as_buffer*/
++    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,  /*tp_flags*/
++    0,                                        /*tp_doc*/
++    (traverseproc)DBIter_tp_traverse,         /*tp_traverse*/
++    (inquiry)DBIter_tp_clear,                 /*tp_clear*/
++    0,                                        /*tp_richcompare*/
++    0,                                        /*tp_weaklistoffset*/
++    PyObject_SelfIter,                        /*tp_iter*/
++    (iternextfunc)HDBIterItems_tp_iternext,   /*tp_iternext*/
++    DBIter_tp_methods,                        /*tp_methods*/
++};
++
++
++
++
++/* HDBType.tp_iter */
++static PyObject *
++Hash_tp_iter(Hash *self)
++{
++    return new_HDBIter(self, &HDBIterKeysType);
++}
++
++static PyObject *
++Hash_iteritems(Hash *self)
++{
++    return new_HDBIter(self, &HDBIterItemsType);
++}
+ 
+ static int
+ Hash_ass_subscript(Hash *self, PyObject *key, PyObject *value)
+ {
+     bool success;
+     char *kbuf, *vbuf;
+     int ksiz, vsiz;
+     
+     if (!PyString_Check(key))
+     {
+@@ -930,21 +1181,34 @@
+         "addint", (PyCFunction) Hash_addint,
+         METH_VARARGS,
+         "Add an integer to the selected record."
+     },
+     
+     {
+         "adddouble", (PyCFunction) Hash_adddouble,
+         METH_VARARGS,
+         "Add a double to the selected record."
+     },
++
++    {
++        "iterkeys", (PyCFunction) Hash_tp_iter,
++        METH_NOARGS,
++        "Return an iterator over the keys. Same as iter(self)."
++    },
+     
++
++    {
++        "iteritems", (PyCFunction) Hash_iteritems,
++        METH_NOARGS,
++        "Return an iterator over the (key, value) entries."
++    },
++
+     {
+         "sync", (PyCFunction) Hash_sync,
+         METH_NOARGS,
+         "Sync data with the disk device."
+     },
+     
+     {
+         "optimize", (PyCFunction) Hash_optimize,
+         METH_VARARGS,
+         "Optimize a fragmented database."
+@@ -1022,21 +1286,21 @@
+   0,                                           /* tp_str */
+   0,                                           /* tp_getattro */
+   0,                                           /* tp_setattro */
+   0,                                           /* tp_as_buffer */
+   Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,    /* tp_flags */
+   "Hash database",                            /* tp_doc */
+   0,                                           /* tp_traverse */
+   0,                                           /* tp_clear */
+   0,                                           /* tp_richcompare */
+   0,                                           /* tp_weaklistoffset */
+-  0,                                           /* tp_iter */
++  (getiterfunc)Hash_tp_iter,                   /*tp_iter*/
+   0,                                           /* tp_iternext */
+   Hash_methods,                               /* tp_methods */
+   0,                                           /* tp_members */
+   0,                                           /* tp_getset */
+   0,                                           /* tp_base */
+   0,                                           /* tp_dict */
+   0,                                           /* tp_descr_get */
+   0,                                           /* tp_descr_set */
+   0,                                           /* tp_dictoffset */
+   0,                                           /* tp_init */
+@@ -1062,28 +1326,32 @@
+     
+     if (!m)
+     {
+         return;
+     }
+     
+     HashError = PyErr_NewException("tokyocabinet.hash.error", NULL, NULL);
+     Py_INCREF(HashError);
+     PyModule_AddObject(m, "error", HashError);
+     
+-    if (PyType_Ready(&HashType) < 0)
++    if (PyType_Ready(&HashType) < 0 ||
++        PyType_Ready(&HDBIterItemsType) < 0 ||
++        PyType_Ready(&HDBIterKeysType) < 0)
+     {
+         return;
+     }
+     
+     
+     Py_INCREF(&HashType);
+     PyModule_AddObject(m, "Hash", (PyObject *) &HashType);
++    PyModule_AddObject(m, "HashIterItems", (PyObject *) &HDBIterItemsType);
++    PyModule_AddObject(m, "HashIterKeys", (PyObject *) &HDBIterKeysType);
+     
+     ADD_INT_CONSTANT(m, HDBOREADER);
+     ADD_INT_CONSTANT(m, HDBOWRITER);
+     ADD_INT_CONSTANT(m, HDBOCREAT);
+     ADD_INT_CONSTANT(m, HDBOTRUNC);
+     ADD_INT_CONSTANT(m, HDBOTSYNC);
+     ADD_INT_CONSTANT(m, HDBONOLCK);
+     ADD_INT_CONSTANT(m, HDBOLCKNB);
+     
+     ADD_INT_CONSTANT(m, HDBTLARGE);

@@ -739,6 +739,8 @@ patchpythontokyocabinet() {
     tar xjvf ../python-tokyocabinet-20111221.tar.bz2 || return "$?"
     mv python-tokyocabinet-20111221 tokyocabinet.dir || return "$?"
     mkdir Lib/tokyocabinet Modules/tokyocabinet || return "$?"
+    # cp tokyocabinet.dir/tokyocabinet/hash.c ../hash.c.orig
+    (cd tokyocabinet.dir/tokyocabinet && $PATCH -p0 <../../../tokyocabinet_hash_c.patch) || return "$?"
     # This is just an empty __init__.py.
     cp tokyocabinet.dir/tokyocabinet/*.py Lib/tokyocabinet/ || return "$?"
     local M

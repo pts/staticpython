@@ -407,15 +407,16 @@ buildlibssl() {
 buildlibevent2() {
   test "$IS_CO" || return 0
   ( cd "$BUILDDIR" || return "$?"
-    rm -rf libevent-2.0.11-stable || return "$?"
+    rm -rf libevent-2.0.16-stable || return "$?"
     rm -rf build-include/event2 || return "$?"
     rm -rf build-lib/libevent* || return "$?"
-    tar xzvf ../libevent-2.0.11-stable.tar.gz || return "$?"
-    cd libevent-2.0.11-stable || return "$?"
+    tar xzvf ../libevent-2.0.16-stable.tar.gz || return "$?"
+    cd libevent-2.0.16-stable || return "$?"
     local SSL_FLAGS=--disable-openssl
     if test "$USE_SSL"; then
       SSL_FLAGS=--enable-openssl
-      perl -pi~ -e 's@^for ac_lib in \x27\x27 ssl;@for ac_lib in \x27\x27 \x27ssl-staticpython -lcrypto-staticpython\x27;@' configure || return "$?"
+      perl -pi~ -e 's@^for ac_lib in \x27\x27 ssl;@for ac_lib in \x27\x27 \x27ssl-staticpython -lcrypto-staticpython\x27;@;
+                    s@ -lcrypto(?= )@ -lcrypto-staticpython@g' configure || return "$?"
     fi
     ./configure $SSL_FLAGS --disable-debug-mode --disable-shared --disable-libevent-regress || return "$?"
     if test "$USE_SSL"; then

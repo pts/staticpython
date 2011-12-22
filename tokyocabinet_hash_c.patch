@@ -1,5 +1,5 @@
 --- hash.c.orig	2011-12-22 12:49:48.744118746 +0100
-+++ hash.c	2011-12-22 12:45:10.156022360 +0100
++++ hash.c	2011-12-22 13:07:18.616953480 +0100
 @@ -1,19 +1,22 @@
  #include <Python.h>
  #include <tchdb.h>
@@ -23,7 +23,84 @@
      {
          PyErr_SetString(PyExc_KeyError, msg);
      }
-@@ -739,20 +742,268 @@
+@@ -156,47 +159,72 @@
+ 
+ 
+ static PyObject *
+ Hash_setcache(Hash *self, PyObject *args, PyObject *kwargs)
+ {
+     bool success = 0;
+     int rcnum;
+     rcnum = 0;
+     
+     static char *kwlist[] = {"rcnum", NULL};
+-    
++
+     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|i", kwlist, &rcnum))
+     {
+         return NULL;
+     }
+     
+     Py_BEGIN_ALLOW_THREADS
+     success = tchdbsetcache(self->db, rcnum);
+     Py_END_ALLOW_THREADS
+     
+     if (!success)
+     {
+         raise_hash_error(self->db);
+         return NULL;
+     }
+     Py_RETURN_NONE;
+ }
+ 
++static PyObject *
++Hash_setdfunit(Hash *self, PyObject *args, PyObject *kwargs)
++{
++    bool success = 0;
++    int dfunit = 0;
++    
++    static char *kwlist[] = {"dfunit", NULL};
++
++    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|i", kwlist, &dfunit)) {
++        return NULL;
++    }
++    
++    Py_BEGIN_ALLOW_THREADS
++    success = tchdbsetdfunit(self->db, dfunit);
++    Py_END_ALLOW_THREADS
++    
++    if (!success)
++    {
++        raise_hash_error(self->db);
++        return NULL;
++    }
++    Py_RETURN_NONE;
++}
++
+ 
+ static PyObject *
+-Hash_setxmsize(Hash *self, PyObject *args)
++Hash_setxmsize(Hash *self, PyObject *args, PyObject *kwargs)
+ {
+     bool success = 0;
+     PY_LONG_LONG xmsiz = 0;
+     
+-    if (!PyArg_ParseTuple(args, "L", &xmsiz))
+-    {
++    static char *kwlist[] = {"xmsize", NULL};
++
++    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|L", kwlist, &xmsiz)) {
+         return NULL;
+     }
+     
+     Py_BEGIN_ALLOW_THREADS
+     success = tchdbsetxmsiz(self->db, xmsiz);
+     Py_END_ALLOW_THREADS
+     
+     if (!success)
+     {
+         raise_hash_error(self->db);
+@@ -739,20 +767,268 @@
      free(vbuf);
      
      if (!value)
@@ -292,7 +369,34 @@
      
      if (!PyString_Check(key))
      {
-@@ -930,21 +1181,34 @@
+@@ -858,20 +1134,26 @@
+         "tune", (PyCFunction) Hash_tune,
+         METH_VARARGS | METH_KEYWORDS,
+         "Set tuning parameters."
+     },
+     
+     {
+         "setcache", (PyCFunction) Hash_setcache,
+         METH_VARARGS | METH_KEYWORDS,
+         "Set cache parameters."
+     },
++
++    {
++        "setdfunit", (PyCFunction) Hash_setdfunit,
++        METH_VARARGS | METH_KEYWORDS,
++        "Set the defragmentation unit."
++    },
+     
+     {
+         "setxmsize", (PyCFunction) Hash_setxmsize,
+         METH_VARARGS | METH_KEYWORDS,
+         "Set size of extra mapped memory."
+     },
+     
+     {
+         "open", (PyCFunction) Hash_open, 
+         METH_VARARGS | METH_KEYWORDS,
+@@ -930,21 +1212,34 @@
          "addint", (PyCFunction) Hash_addint,
          METH_VARARGS,
          "Add an integer to the selected record."
@@ -327,7 +431,7 @@
          "optimize", (PyCFunction) Hash_optimize,
          METH_VARARGS,
          "Optimize a fragmented database."
-@@ -1022,21 +1286,21 @@
+@@ -1022,21 +1317,21 @@
    0,                                           /* tp_str */
    0,                                           /* tp_getattro */
    0,                                           /* tp_setattro */
@@ -350,7 +454,7 @@
    0,                                           /* tp_descr_set */
    0,                                           /* tp_dictoffset */
    0,                                           /* tp_init */
-@@ -1062,28 +1326,32 @@
+@@ -1062,28 +1357,32 @@
      
      if (!m)
      {

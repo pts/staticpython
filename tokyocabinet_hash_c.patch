@@ -1,6 +1,6 @@
---- hash.c.orig	2011-12-22 12:49:48.744118746 +0100
-+++ hash.c	2011-12-22 13:07:18.616953480 +0100
-@@ -1,19 +1,22 @@
+--- hash.c.orig	2011-12-23 20:47:46.000000000 +0100
++++ hash.c	2011-12-23 20:45:37.000000000 +0100
+@@ -1,35 +1,60 @@
  #include <Python.h>
  #include <tchdb.h>
  #include <tcutil.h>
@@ -23,7 +23,45 @@
      {
          PyErr_SetString(PyExc_KeyError, msg);
      }
-@@ -156,47 +159,72 @@
+     else
+     {
+         PyErr_SetString(HashError, msg);
+     }
+ }
+ 
++static void
++raise_hash_error3(TCHDB *db, const char *key, Py_ssize_t ksiz)
++{
++    int code = tchdbecode(db);
++    const char *msg = tchdberrmsg(code);
++    
++    if (code == TCENOREC) {
++        /* TODO(pts): Do this without a copy. */
++        PyObject *tup, *str;
++        str = PyString_FromStringAndSize(key, ksiz);
++        if (str) {
++           tup = PyTuple_Pack(1, str);
++           if (tup) {
++               PyErr_SetObject(PyExc_KeyError, tup);
++               Py_DECREF(tup);
++           }
++        }
++    } else {
++        PyErr_SetString(HashError, msg);
++    }
++}
++
+ 
+ static PyTypeObject HashType;
+ 
+ 
+ typedef struct
+ {
+     PyObject_HEAD
+     TCHDB *db;
+ } Hash;
+ 
+@@ -156,47 +181,72 @@
  
  
  static PyObject *
@@ -100,7 +138,78 @@
      if (!success)
      {
          raise_hash_error(self->db);
-@@ -739,20 +767,268 @@
+@@ -331,26 +381,53 @@
+     {
+         return NULL;
+     }
+     
+     Py_BEGIN_ALLOW_THREADS
+     success = tchdbout(self->db, kbuf, ksiz);
+     Py_END_ALLOW_THREADS
+     
+     if (!success)
+     {
+-        raise_hash_error(self->db);
++        raise_hash_error3(self->db, kbuf, ksiz);
+         return NULL;
+     }
+     Py_RETURN_NONE;
+ }
+ 
++static PyObject *
++Hash_out_ex(Hash *self, PyObject *args)
++{
++    bool success;
++    char *kbuf;
++    int ksiz;
++    
++    if (!PyArg_ParseTuple(args, "s#:out", &kbuf, &ksiz)) {
++        return NULL;
++    }
++    
++    Py_BEGIN_ALLOW_THREADS
++    success = tchdbout(self->db, kbuf, ksiz);
++    Py_END_ALLOW_THREADS
++    
++    if (!success) {
++        if (tchdbecode(self->db) == TCENOREC) {
++            Py_INCREF(Py_False);
++            return Py_False;
++        }
++        raise_hash_error(self->db);
++        return NULL;
++    }
++    Py_INCREF(Py_True);
++    return Py_True;
++}
++
+ 
+ static PyObject *
+ Hash_get(Hash *self, PyObject *args, PyObject *kwargs)
+ {
+     char *kbuf, *vbuf;
+     int ksiz, vsiz;
+     PyObject *default_value = NULL;
+     PyObject *value = NULL;
+     
+     static char *kwlist[] = {"key", "default", NULL};
+@@ -724,58 +801,317 @@
+     {
+         return NULL;
+     }
+     
+     Py_BEGIN_ALLOW_THREADS
+     vbuf = tchdbget(self->db, kbuf, (int) ksiz, &vsiz);
+     Py_END_ALLOW_THREADS
+     
+     if (!vbuf)
+     {
+-        raise_hash_error(self->db);
++        raise_hash_error3(self->db, kbuf, ksiz);
+         return NULL;
+     }
+     
+     value = PyString_FromStringAndSize(vbuf, vsiz);
      free(vbuf);
      
      if (!value)
@@ -369,7 +478,47 @@
      
      if (!PyString_Check(key))
      {
-@@ -858,20 +1134,26 @@
+         PyErr_SetString(PyExc_ValueError, "Expected key to be a string.");
+         return -1;
+     }
+-    
+-    if (!PyString_Check(value))
++
++    PyString_AsStringAndSize(key, &kbuf, &ksiz);
++    if (!kbuf)
+     {
+-        PyErr_SetString(PyExc_ValueError, "Expected value to be a string.");
+         return -1;
+     }
+-    
+-    PyString_AsStringAndSize(key, &kbuf, &ksiz);
+-    if (!kbuf)
++
++    if (value == NULL) {  /* __delitem__ */
++        Py_BEGIN_ALLOW_THREADS
++        success = tchdbout(self->db, kbuf, ksiz);
++        Py_END_ALLOW_THREADS
++        if (!success) {
++            raise_hash_error3(self->db, kbuf, ksiz);
++            return -1;
++        }
++        return 0;
++    }
++
++    if (!PyString_Check(value))
+     {
++        PyErr_SetString(PyExc_ValueError, "Expected value to be a string.");
+         return -1;
+     }
+     
+     PyString_AsStringAndSize(value, &vbuf, &vsiz);
+     if (!vbuf)
+     {
+         return -1;
+     }
+     
+     Py_BEGIN_ALLOW_THREADS
+@@ -858,20 +1194,26 @@
          "tune", (PyCFunction) Hash_tune,
          METH_VARARGS | METH_KEYWORDS,
          "Set tuning parameters."
@@ -396,7 +545,39 @@
      {
          "open", (PyCFunction) Hash_open, 
          METH_VARARGS | METH_KEYWORDS,
-@@ -930,21 +1212,34 @@
+@@ -898,24 +1240,30 @@
+     
+     {
+         "putcat", (PyCFunction) Hash_putcat,
+         METH_VARARGS,
+         "Concatenate value on the end of a record. Creates the record if it doesn't exist."
+     },
+     
+     {
+         "out", (PyCFunction) Hash_out,
+         METH_VARARGS,
+-        "Remove a record. If there are duplicates only the first is removed."
++        "Remove a record, or raise KeyError if not found."
+     },
+     
+     {
++        "out_ex", (PyCFunction) Hash_out_ex,
++        METH_VARARGS,
++        "Remove a record. Return bool indicating if it was found."
++    },
++
++    {
+         "get", (PyCFunction) Hash_get,
+         METH_VARARGS | METH_KEYWORDS,
+         "Retrieve a record. If none is found None or the supplied default value is returned."
+     },
+     
+     {
+         "vsiz", (PyCFunction) Hash_vsiz,
+         METH_VARARGS,
+         "Get the size of the of the record for key. If duplicates are found, the first record is used."
+     },
+@@ -930,21 +1278,34 @@
          "addint", (PyCFunction) Hash_addint,
          METH_VARARGS,
          "Add an integer to the selected record."
@@ -431,7 +612,7 @@
          "optimize", (PyCFunction) Hash_optimize,
          METH_VARARGS,
          "Optimize a fragmented database."
-@@ -1022,21 +1317,21 @@
+@@ -1022,21 +1383,21 @@
    0,                                           /* tp_str */
    0,                                           /* tp_getattro */
    0,                                           /* tp_setattro */
@@ -454,7 +635,7 @@
    0,                                           /* tp_descr_set */
    0,                                           /* tp_dictoffset */
    0,                                           /* tp_init */
-@@ -1062,28 +1357,32 @@
+@@ -1062,28 +1423,32 @@
      
      if (!m)
      {

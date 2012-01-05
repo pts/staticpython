@@ -626,8 +626,8 @@ patchsyncless() {
   test "$IS_CO" || return 0
   ( cd "$BUILDDIR" || return "$?"
     rm -rf syncless-* syncless.dir Lib/syncless Modules/syncless || return "$?"
-    tar xzvf ../syncless-0.24.tar.gz || return "$?"
-    mv syncless-0.24 syncless.dir || return "$?"
+    tar xzvf ../syncless-0.25.tar.gz || return "$?"
+    mv syncless-0.25 syncless.dir || return "$?"
     mkdir Lib/syncless Modules/syncless || return "$?"
     cp syncless.dir/syncless/*.py Lib/syncless/ || return "$?"
     generate_loader_py _syncless_coio syncless.coio || return "$?"

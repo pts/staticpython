@@ -158,6 +158,24 @@ def setencoding():
         # On Non-Unicode builds this will raise an AttributeError...
         sys.setdefaultencoding(encoding) # Needs Python Unicode build !
 
+def fix_appengine_py_zimpimport():
+    class StaticPythonImporter(object):
+        @classmethod
+        def find_module(cls, fullmodname, path=None):
+            # Cancel the effect of the py_zipimport module in Google
+            # AppEngine. py_zipimport installs a .zip import handler which
+            # can't properly import from /proc/self/exe . The default
+            # zipimporter is just fine.
+            if fullmodname == 'google.appengine.dist.py_zipimport':
+                return cls  # Replace it with an empty module.
+            return None
+        @classmethod
+        def load_module(self, fullmodname):
+            mod = type(sys)(fullmodname)
+            mod.__name__ = fullmodname
+            return mod
+    sys.meta_path[:0] = [StaticPythonImporter]
+
 
 def main():
     setquit()
@@ -169,6 +187,7 @@ def main():
     # this module is run as a script, because this code is executed twice.
     if hasattr(sys, "setdefaultencoding"):
         del sys.setdefaultencoding
+    fix_appengine_py_zimpimport()
 
 main()
 

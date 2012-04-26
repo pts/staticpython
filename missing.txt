@@ -1,18 +1,13 @@
-The following standard Python modules are missing from StaticPython:
+The following standard Python modules are missing from StaticPython 2.7
+(stacklessco2.7):
 
 dep _bsddb.c
 dep _curses_panel.c
-dep _hashopenssl.c
-done _heapqmodule.c
-done _hotshot.c
-done _json.c
-done _lsprof.c
-dep _ssl.c
+dep _hashopenssl.c import _hashlib  TODO(pts): Add it.
 test _testcapimodule.c
 dep _tkinter.c
-nonlinux almodule.c
+not-for-linux almodule.c
 dep bsddbmodule.c
-done bz2module.c
 dep cdmodule.c
 not-a-module cgensupport.c
 dep clmodule.c
@@ -21,21 +16,31 @@ sofile dlmodule.c
 dep flmodule.c
 dep fmmodule.c
 test fpetestmodule.c
-done future_builtins.c
 dep gdbmmodule.c
 not-a-module getaddrinfo.c
 not-a-module getnameinfo.c
 dep glmodule.c
-nonlinux imgfile.c
-hardware linuxaudiodev.c
+not-for-linux imgfile.c
+linux-hardware linuxaudiodev.c
 dep nismodule.c
-hardware ossaudiodev.c
-test puremodule.c
+linux-hardware ossaudiodev.c
+dep puremodule.c
 not-a-module rotatingtree.c
-nonlinux sgimodule.c
-nonlinux sunaudiodev.c
-hardware svmodule.c
+not-for-linux sgimodule.c
+not-for-linux sunaudiodev.c
+dep svmodule.c
 dep tkappinit.c
 dep unicodedata.c
 test xxmodule.c
 not-a-module yuvconvert.c
+
+Legend:
+
+dep: Has an external C library dependency.
+test: Doesn't contain useful functionality -- it's just for testing and
+  development of C modules.
+not-for-linux: Depends on some non-Linux OS API. Wouldn't work on Linux.
+not-a-module: A .c file not defining a Python extension module.
+sofile: Needs shared object (.so file) support, which is not provided by
+  StaticPython.
+linux-hardware: Python interface for a Linux-specific hardware API.

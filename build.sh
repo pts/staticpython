@@ -959,6 +959,9 @@ buildpythonlibzip() {
     fi
     if test "$IS_PY3"; then
       cp ../site.3.2.py xlib/site.py || return "$?"
+      # This is to make `import socket; socket.gethostbyname('www.google.com')
+      # work.
+      (cd xlib && $PATCH -p1 <../../encodings_idna_missing_unicodedata.3.2.patch) || return "$?"
     else
       cp ../site.2.7.py xlib/site.py || return "$?"
     fi

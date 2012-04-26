@@ -30,7 +30,7 @@ not-for-linux sgimodule.c
 not-for-linux sunaudiodev.c
 dep svmodule.c
 dep tkappinit.c
-dep unicodedata.c
+dep unicodedata.c  (would make the binary about 238000 bytes larger)
 test xxmodule.c
 not-a-module yuvconvert.c
 

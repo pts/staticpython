@@ -1,0 +1,55 @@
+--- Lib/encodings/idna.py.orig	2008-08-19 19:56:33.000000000 +0200
++++ Lib/encodings/idna.py	2012-04-26 13:24:31.450392161 +0200
+@@ -1,35 +1,49 @@
+ # This module implements the RFCs 3490 (IDNA) and 3491 (Nameprep)
+ 
+-import stringprep, re, codecs
+-from unicodedata import ucd_3_2_0 as unicodedata
++import re, codecs
++try:
++   import stringprep
++except ImportError:
++   stringprep = None
++try:
++   from unicodedata import ucd_3_2_0 as unicodedata
++except ImportError:
++   unicodedata = None
+ 
+ # IDNA section 3.1
+ dots = re.compile("[\u002E\u3002\uFF0E\uFF61]")
+ 
+ # IDNA section 5
+ ace_prefix = b"xn--"
+ sace_prefix = "xn--"
+ 
+ # This assumes query strings, so AllowUnassigned is true
+ def nameprep(label):
++    # (StaticPython) The implementation is incorrect if unicodedata is false,
++    # but it works for ASCII domain names.
++    if not stringprep:
++        return label
+     # Map
+     newlabel = []
+     for c in label:
+         if stringprep.in_table_b1(c):
+             # Map to nothing
+             continue
+         newlabel.append(stringprep.map_table_b2(c))
+     label = "".join(newlabel)
+ 
+     # Normalize
+-    label = unicodedata.normalize("NFKC", label)
++    # (StaticPython) The implementation is incorrect if unicodedata is false,
++    # but it works for ASCII domain names.
++    if unicodedata:
++        label = unicodedata.normalize("NFKC", label)
+ 
+     # Prohibit
+     for c in label:
+         if stringprep.in_table_c12(c) or \
+            stringprep.in_table_c22(c) or \
+            stringprep.in_table_c3(c) or \
+            stringprep.in_table_c4(c) or \
+            stringprep.in_table_c5(c) or \
+            stringprep.in_table_c6(c) or \
+            stringprep.in_table_c7(c) or \

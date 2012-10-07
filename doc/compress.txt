@@ -1,0 +1,78 @@
+by pts@fazekas.hu at Sun Oct  7 14:16:05 CEST 2012
+
+Python 2.7, Linux i386
+
+disadvantage of UPX: slower to start
+disadvantage of UPX: code memory not shared between processes
+
+TODO(pts): How much larger is a .pyc?
+TODO(pts): Can we do something smarter instead of .zip? (.tar.gz is 1378618
+  instead of 1554899 bytes). To save startup time...
+
+stacklessxx2.7
+~~~~~~~~~~~~~~
+python            8072260
+python.lzma       2741696
+python.brute      2741056
+xlib.zip          2168717
+xlib0.zip         8629551
+plib0.zip         5322748
+pliba4.zip        1554899
+pri               5326796
+pri.lzma          1034436
+pri.brute         1031356
+python+pri       13399056
+python+pri.lzma   3776132
+python+pri.brute  3772412
+pythonpri        13393017
+pythonpri.lzma    3780264
+pythonpri.brute   3759168
+
+C-bin      8072260
+lzma      -5330564
+brute         -640
+
+py-concat  8629551
+zipa4     -6460834
+pypack     -613818
+lzma       -524511
+brute        -3080
+combo        -9196
+
+startup speed  0ms
+C-lzma         +320ms
+py-lzma combo  +134ms
+
+python2.7
+~~~~~~~~~
+python            4983485
+python.lzma       1800048
+python.brute      1800048
+xlib.zip          1785327
+xlib0.zip         7310544
+plib0.zip         4493141
+pliba4.zip        1284357
+pri               4497188
+pri.lzma           874320
+pri.brute          874072
+python+pri        9480673
+python+pri.lzma   2674368
+python+pri.brute  2674120
+pythonpri         9476850
+pythonpri.lzma    2665128
+pythonpri.brute   2663168
+
+C-bin      4983485
+lzma      -3183437
+brute           -0
+
+py-concat  7310544
+zipa4     -5525217
+pypack     -500970
+lzma       -414085
+brute         -248
+combo        -6904
+
+startup speed  0ms
+C-lzma         +210ms
+py-lzma combo  +104ms

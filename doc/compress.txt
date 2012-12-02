@@ -8,6 +8,7 @@ disadvantage of UPX: code memory not shared between processes
 TODO(pts): How much larger is a .pyc?
 TODO(pts): Can we do something smarter instead of .zip? (.tar.gz is 1378618
   instead of 1554899 bytes). To save startup time...
+TODO(pts): Recompile with flags to remove unused code.
 
 stacklessxx2.7
 ~~~~~~~~~~~~~~
@@ -70,6 +71,7 @@ py-concat  7310544
 zipa4     -5525217
 pypack     -500970
 lzma       -414085
+minipy       -4988
 brute         -248
 combo        -6904
 

@@ -13,18 +13,16 @@ if test $# != 1 || test "${1/\//}" != "$1"; then
   exit 1
 fi
 if test "`uname`" = Darwin; then
-  URL="http://pts-mini-gpl.googlecode.com/svn/trunk/staticpython/release.darwin/$1"
-  echo "info: downloading: $URL"
+  URL="https://raw.githubusercontent.com/pts/staticpython/master/release.darwin/$1"
+else
+  URL="https://raw.githubusercontent.com/pts/staticpython/master/release/$1"
+fi
+echo "info: downloading: $URL"
+if type -p curl >/dev/null 2>&1; then
   curl -o "$1.download" "$URL" || exit 2
 else
-  URL="http://pts-mini-gpl.googlecode.com/svn/trunk/staticpython/release/$1"
-  if type -p wgetz >/dev/null 2>&1; then
-    wget -O "$1.download" "$URL" || exit 2
-  else
-    echo "info: downloading: $URL"
-    curl -o "$1.download" "$URL" || exit 2
-  fi
+  wget -O "$1.download" "$URL" || exit 2
 fi
-chmod +x "$1.download"
-mv "$1.download" "$1"
+chmod +x "$1.download" || exit 2
+mv "$1.download" "$1" || exit 2
 echo "info: download OK, run with: ./$1"

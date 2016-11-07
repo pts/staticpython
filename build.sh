@@ -392,16 +392,18 @@ buildlibz() {
 buildlibssl() {
   test "$USE_SSL" || return 0
   ( cd "$BUILDDIR" || return "$?"
-    rm -rf openssl-0.9.8r.tar.gz || return "$?"
-    tar xzvf ../openssl-0.9.8r.tar.gz || return "$?"
-    cd openssl-0.9.8r || return "$?"
+    rm -rf openssl-0.9.8zh.tar.gz || return "$?"
+    tar xzvf ../openssl-0.9.8zh.tar.gz || return "$?"
+    cd openssl-0.9.8zh || return "$?"
     if test "$UNAME" = Linux; then
-      ./Configure no-shared linux-generic32 || return "$?"
+      ./Configure no-shared linux-elf no-dso || return "$?"
     else
       # This inserts `-arch i386', which we remove below.
       ./Configure no-shared darwin-i386-cc || return "$?"  # TODO(pts): Test this.
     fi
     perl -pi~ -e 's@\s(?:-g|-arch\s+\S+)(?!\S)@@g, s@\s-O\d*(?!\S)@ -O2@g, s@\s-D(DSO_DLFCN|HAVE_DLFCN_H)(?!\S)@@g if s@^CFLAG\s*=\s*@CFLAG = @' Makefile || return "$?"
+    # Workaround for our perl not supporting -I... and PERLINC=...
+    ln -s . crypto/des/asm/perlasm || return "$?"
     make build_libs || return "$?"
     cp libssl.a ../build-lib/libssl-staticpython.a || return "$?"
     cp libcrypto.a ../build-lib/libcrypto-staticpython.a || return "$?"

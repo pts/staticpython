@@ -742,7 +742,6 @@ old_run_mkzip() {
 }
 
 patchpythontokyocabinet() {
-  test "$IS_XX" || return 0
   test "$USE_TC" || return 0
   ( cd "$BUILDDIR" || return "$?"
     rm -rf python-tokyocabinet-* tokyocabinet.dir Lib/tokyocabinet Modules/tokyocabinet || return "$?"

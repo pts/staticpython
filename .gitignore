@@ -1,0 +1,7 @@
+*~
+busybox.bin/
+release.old/
+python*-static.build/
+python*-static
+stackless*-static.build/
+stackless*-static

@@ -28,6 +28,8 @@
 #
 # for Mac OS X:
 #
+# TODO(pts): Add openssl-based AES encryption module (does it support XTS): https://wiki.openssl.org/index.php/EVP_Symmetric_Encryption_and_Decryption
+#            ... or does alo-aes support XTS?
 # TODO(pts): Make binaries identical upon recompilation.
 # TODO(pts): Implement stacklessco.
 # TODO(pts): Configure -lz  --> pyconfig.h HAVE_ZLIB_COPY=1 
@@ -85,6 +87,7 @@ INSTS_BASE="bzip2-1.0.5.inst.tbz2 ncurses-5.6.inst.tbz2 readline-5.2.inst.tbz2 s
 STEPS=
 USE_SSL=
 USE_TC=
+USE_LMDB=
 TARGET=python2.7-static
 PYTHONTBZ2=Python-2.7.12.tar.xz
 IS_CO=
@@ -112,6 +115,7 @@ for ARG in "$@"; do
     ISP_PY3=
     USE_SSL=1
     USE_TC=1
+    USE_LMDB=1
   elif test "$ARG" = python || test "$ARG" = python2.7; then
     TARGET=python2.7-static
     PYTHONTBZ2=Python-2.7.12.tar.xz
@@ -152,7 +156,7 @@ if test -z "$STEPS"; then
   # Don't include betry here.
   # Please note that fixsetup appears multiple times here. This is intentional,
   # to get Modules/Setup right.
-  STEPS="initbuilddir initdeps buildlibssl buildlibevent2 buildlibtc configure fixsemaphore patchsetup fixsetup patchimport patchgetpath patchsqlite patchssl patchlocale fixsetup makeminipython extractpyrex patchsyncless patchgevent patchgeventmysql patchmsgpack patchpythontokyocabinet patchconcurrence patchpycrypto patchaloaes fixsetup makepython buildpythonlibzip buildtarget"
+  STEPS="initbuilddir initdeps buildlibssl buildlibevent2 buildlibtc configure fixsemaphore patchsetup fixsetup patchimport patchgetpath patchsqlite patchssl patchlocale fixsetup makeminipython extractpyrex patchsyncless patchgevent patchgeventmysql patchmsgpack patchpythontokyocabinet patchpythonlmdb patchconcurrence patchpycrypto patchaloaes fixsetup makepython buildpythonlibzip buildtarget"
 fi
 
 INSTS="$INSTS_BASE"
@@ -188,6 +192,7 @@ echo "Will run steps: $STEPS"
 echo "Is adding coroutine libraries: $IS_CO"
 echo "Is using OpenSSL for SSL functionality: $USE_SSL"
 echo "Is using Tokyo Cabinet database: $USE_TC"
+echo "Is using LMDB (database): $USE_LMDB"
 echo "Operating system UNAME: $UNAME"
 echo
 
@@ -758,6 +763,27 @@ patchpythontokyocabinet() {
       generate_loader_py _tokyocabinet_$M tokyocabinet.$M || return "$?"
       enable_module _tokyocabinet_$M || return "$?"
     done
+  ) || return "$?"
+}
+
+patchpythonlmdb() {
+  test "$USE_LMDB" || return 0
+  ( cd "$BUILDDIR" || return "$?"
+    rm -rf lmdb-* lmdb.dir Lib/lmdb Modules/lmdb || return "$?"
+    tar xzvf ../lmdb-0.92.tar.gz || return "$?"
+    mv lmdb-0.92 lmdb.dir || return "$?"
+    mkdir Lib/lmdb Modules/lmdb || return "$?"
+    echo 'from _lmdb_cpython import *
+from _lmdb_cpython import open
+from _lmdb_cpython import __all__' >Lib/lmdb/__init__.py
+    cp lmdb.dir/lmdb/tool.py Lib/lmdb/ || return "$?"
+    cp lmdb.dir/lib/mdb.c Modules/lmdb/lmdb_mdb.c || return "$?"
+    cp lmdb.dir/lib/midl.c Modules/lmdb/lmdb_midl.c || return "$?"
+    # Our uClibc doesn't support pthread_mutexattr_setpshared, so we just skip the call.
+    perl -pi~ -e 's@(pthread_mutexattr_setpshared\()@0&&$1@g' Modules/lmdb/lmdb_mdb.c || return "$?"
+    patch_and_copy_cext lmdb.dir/lmdb/cpython.c Modules/lmdb/_lmdb_cpython.c || return "$?"
+    #generate_loader_py _lmdb lmdb.btree || return "$?"
+    enable_module _lmdb_cpython || return "$?"
   ) || return "$?"
 }
 

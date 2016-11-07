@@ -525,6 +525,7 @@ greenlet greenlet-0.3.1/greenlet.c
 #_tokyocabinet_btree tokyocabinet/_tokyocabinet_btree.c -ltokyocabinet-staticpython -lpthread
 #_tokyocabinet_hash tokyocabinet/_tokyocabinet_hash.c -ltokyocabinet-staticpython -lpthread
 #_tokyocabinet_table tokyocabinet/_tokyocabinet_table.c -ltokyocabinet-staticpython -lpthread
+#_lmdb_cpython lmdb/_lmdb_cpython.c lmdb/lmdb_midl.c lmdb/lmdb_mdb.c -DHAVE_MEMALIGN -I$(srcdir)/lmdb.dir/lib -I$(srcdir)/lmdb.dir/lib/py-lmdb
 
 # **** pts **** crypto
 #_Crypto_Hash_MD2 pycrypto/_Crypto_Hash_MD2.c

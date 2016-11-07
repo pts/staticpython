@@ -63,7 +63,7 @@ else
   set -e  # Abort on error.
   test -d busybox.bin || ./busybox mkdir busybox.bin
   for F in cp mv rm sleep touch mkdir tar expr sed awk ls pwd test cmp diff \
-           patch \
+           patch xz \
            sort cat head tail chmod chown uname basename tr find grep ln; do
     ./busybox rm -f busybox.bin/"$F"
     ./busybox ln -s ../busybox busybox.bin/"$F"
@@ -85,27 +85,27 @@ STEPS=
 USE_SSL=
 USE_TC=
 TARGET=python2.7-static
-PYTHONTBZ2=Python-2.7.1.tar.bz2
+PYTHONTBZ2=Python-2.7.12.tar.xz
 IS_CO=
 IS_PY3=
 for ARG in "$@"; do 
   if test "$ARG" = stackless || test "$ARG" = stackless2.7; then
     TARGET=stackless2.7-static
-    PYTHONTBZ2=stackless-271-export.tar.bz2
+    PYTHONTBZ2=stackless-2712-export.tar.xz
     IS_CO=
     IS_XX=
     IS_PY3=
     USE_SSL=
   elif test "$ARG" = stacklessco || test "$ARG" = stacklessco2.7; then
     TARGET=stacklessco2.7-static
-    PYTHONTBZ2=stackless-271-export.tar.bz2
+    PYTHONTBZ2=stackless-2712-export.tar.xz
     IS_CO=1
     IS_XX=
     ISP_PY3=
     USE_SSL=1
   elif test "$ARG" = stacklessxx || test "$ARG" = stacklessxx2.7; then
     TARGET=stacklessxx2.7-static
-    PYTHONTBZ2=stackless-271-export.tar.bz2
+    PYTHONTBZ2=stackless-2712-export.tar.xz
     IS_CO=1
     IS_XX=1  # IS_CO=1 must also be set.
     ISP_PY3=
@@ -113,7 +113,7 @@ for ARG in "$@"; do
     USE_TC=1
   elif test "$ARG" = python || test "$ARG" = python2.7; then
     TARGET=python2.7-static
-    PYTHONTBZ2=Python-2.7.1.tar.bz2
+    PYTHONTBZ2=Python-2.7.12.tar.xz
     IS_CO=
     IS_XX=
     IS_PY3=
@@ -243,7 +243,11 @@ initbuilddir() {
   test "$OUT" = "Hello, World!"
 
   ( cd "$BUILDDIR" || return "$?"
-    tar xjvf ../"$PYTHONTBZ2" || return "$?"
+    if test "${PYTHONTBZ2%.xz}" != "${PYTHONTBZ2}"; then
+      xz -d <../"$PYTHONTBZ2" | tar xv || return "$?"
+    else:
+      tar xjvf ../"$PYTHONTBZ2" || return "$?"
+    fi
   ) || return "$?"
   ( cd "$BUILDDIR" || return "$?"
     if test -d Python-*; then
@@ -253,6 +257,8 @@ initbuilddir() {
     elif test -d stackless-*; then
       mv stackless-*/* . || return "$?"
     fi
+    # Disabling this build rule is needed for python-2.7.12.
+    perl -pi~ -e 's@^(Parser/pgenmain[.]o:)@disabled_$1@' Makefile.pre.in || return "$?"
   ) || return "$?"
 
   ( cd "$BUILDDIR/Modules" || return "$?"

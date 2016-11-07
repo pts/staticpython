@@ -53,8 +53,9 @@ unset PYTHONPATH PYTHONSTARTUP PYTHONHOME PYTHONCASEOK PYTHONIOENCODING
 if test "$NO_BUSYBOX" || test "$UNAME" = Darwin; then  # Darwin is Mac OS X
   BUSYBOX=
   PATCH='patch -t'  # -t to disable prompts.
-elif test "$BASH_VERSION"; then
+elif test "$BASH_VERSION" || test -z "$STATICPYTHON_IN_BUSYBOX"; then
   unset BASH_VERSION
+  export STATICPYTHON_IN_BUSYBOX=1
   exec ./busybox sh -- "$0" "$@"
 else
   BUSYBOX=./busybox

@@ -631,9 +631,7 @@ patchssl() {
   test "$USE_SSL" || return 0
   ( cd "$BUILDDIR" || return "$?"
     enable_module _ssl || return "$?"
-    if test "$IS_PY3"; then
-      enable_module _hashlib || return "$?"
-    fi
+    enable_module _hashlib || return "$?"
   ) || return "$?"
 }
 

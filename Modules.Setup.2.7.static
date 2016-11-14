@@ -490,6 +490,8 @@ _codecs_jp cjkcodecs/_codecs_jp.c
 _codecs_kr cjkcodecs/_codecs_kr.c
 _codecs_tw cjkcodecs/_codecs_tw.c
 
+#_hashlib _hashopenssl.c
+
 # Example -- included for reference only:
 #xx xxmodule.c
 

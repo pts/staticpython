@@ -93,6 +93,7 @@ PYTHONTBZ2=Python-2.7.12.tar.xz
 IS_CO=
 IS_PY3=
 for ARG in "$@"; do 
+  ARG="${ARG%-static}"  # E.g. convert python2.7-static to python2.7
   if test "$ARG" = stackless || test "$ARG" = stackless2.7; then
     TARGET=stackless2.7-static
     PYTHONTBZ2=stackless-2712-export.tar.xz

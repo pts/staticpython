@@ -408,6 +408,10 @@ buildlibssl() {
       # This inserts `-arch i386', which we remove below.
       ./Configure no-shared darwin-i386-cc || return "$?"  # TODO(pts): Test this.
     fi
+    # Doing -O3 instead of -O2 would increase the binary size by about 67 KiB
+    # for openssl-0.9.8zh.tar.gz , and it would speed up hashlib.pbkdf2_hmac
+    # by about 1.5% (most of the hash computation is already in assembly). Not
+    # doing it.
     perl -pi~ -e 's@\s(?:-g|-arch\s+\S+)(?!\S)@@g, s@\s-O\d*(?!\S)@ -O2@g, s@\s-D(DSO_DLFCN|HAVE_DLFCN_H)(?!\S)@@g if s@^CFLAG\s*=\s*@CFLAG = @' Makefile || return "$?"
     # Workaround for our perl not supporting -I... and PERLINC=...
     ln -s . crypto/des/asm/perlasm || return "$?"

@@ -252,7 +252,7 @@ initbuilddir() {
   ( cd "$BUILDDIR" || return "$?"
     if test "${PYTHONTBZ2%.xz}" != "${PYTHONTBZ2}"; then
       xz -d <../"$PYTHONTBZ2" | tar xv || return "$?"
-    else:
+    else
       tar xjvf ../"$PYTHONTBZ2" || return "$?"
     fi
   ) || return "$?"

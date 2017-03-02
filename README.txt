@@ -8,3 +8,8 @@ blog post: http://ptspts.blogspot.com/2011/02/how-to-run-syncless-on-linux-witho
 blog post: http://ptspts.blogspot.com/2011/06/python-32-binaries-released-in.html
 blog post: http://ptspts.blogspot.com/2014/06/whats-difference-between-staticpython.html
 blog post: http://ptspts.blogspot.com/2016/02/micropython-for-linux-i386-statically.html
+
+Send donations to the author of staticpython:
+https://flattr.com/submit/auto?user_id=pts&url=https://github.com/pts/staticpython
+
+__END__

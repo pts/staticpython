@@ -9,6 +9,7 @@
 # Example invocation: ./build.sh stacklessco
 # Example invocation: ./build.sh stacklessco usessl
 # Example invocation: ./build.sh python3.2
+# Example invocation: ./build.sh python3.6
 # Example invocation: ./build.sh stackless3.2
 # Example invocation: ./build.sh stacklessxl3.2
 #
@@ -127,6 +128,13 @@ for ARG in "$@"; do
   elif test "$ARG" = python3.2; then
     TARGET=python3.2-static
     PYTHONTBZ2=Python-3.2.tar.bz2
+    IS_CO=
+    IS_XX=
+    IS_PY3=1
+    USE_SSL=
+  elif test "$ARG" = python3.6; then
+    TARGET=python3.6-static
+    PYTHONTBZ2=Python-3.6.0.tar.xz
     IS_CO=
     IS_XX=
     IS_PY3=1
@@ -559,7 +567,7 @@ fixsetup() {
   if test "$IS_PY3"; then
     ( cd "$BUILDDIR" || return "$?"
       grep '^_thread ' Modules/Setup.config || return "$?"
-      grep 'signal' Modules/Setup.config || return "$?"
+      #grep 'signal' Modules/Setup.config || return "$?"
     ) || return "$?"
   fi
 }

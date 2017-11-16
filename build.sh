@@ -5,6 +5,7 @@
 # Mac OS X support at Sat May 21 21:04:07 CEST 2011
 #
 # Example invocation: ./build.sh
+# Example invocation: ./build.sh pythonmu
 # Example invocation: ./build.sh stackless
 # Example invocation: ./build.sh stacklessco
 # Example invocation: ./build.sh stacklessco usessl
@@ -93,6 +94,7 @@ TARGET=python2.7-static
 PYTHONTBZ2=Python-2.7.12.tar.xz
 IS_CO=
 IS_PY3=
+IS_MU=
 for ARG in "$@"; do 
   ARG="${ARG%-static}"  # E.g. convert python2.7-static to python2.7
   if test "$ARG" = stackless || test "$ARG" = stackless2.7; then
@@ -101,20 +103,23 @@ for ARG in "$@"; do
     IS_CO=
     IS_XX=
     IS_PY3=
+    IS_MU=
     USE_SSL=
   elif test "$ARG" = stacklessco || test "$ARG" = stacklessco2.7; then
     TARGET=stacklessco2.7-static
     PYTHONTBZ2=stackless-2712-export.tar.xz
     IS_CO=1
     IS_XX=
-    ISP_PY3=
+    IS_PY3=
+    IS_MU=
     USE_SSL=1
   elif test "$ARG" = stacklessxx || test "$ARG" = stacklessxx2.7; then
     TARGET=stacklessxx2.7-static
     PYTHONTBZ2=stackless-2712-export.tar.xz
     IS_CO=1
     IS_XX=1  # IS_CO=1 must also be set.
-    ISP_PY3=
+    IS_PY3=
+    IS_MU=
     USE_SSL=1
     USE_TC=1
     USE_LMDB=1
@@ -124,6 +129,16 @@ for ARG in "$@"; do
     IS_CO=
     IS_XX=
     IS_PY3=
+    IS_MU=
+    USE_SSL=
+  elif test "$ARG" = pythonmu || test "$ARG" = pythonmu2.7; then
+    # Minimalistic Python for pdfsizeopt.
+    TARGET=pythonmu2.7-static
+    PYTHONTBZ2=Python-2.7.12.tar.xz
+    IS_CO=
+    IS_XX=
+    IS_PY3=
+    IS_MU=1
     USE_SSL=
   elif test "$ARG" = python3.2; then
     TARGET=python3.2-static
@@ -131,6 +146,7 @@ for ARG in "$@"; do
     IS_CO=
     IS_XX=
     IS_PY3=1
+    IS_MU=
     USE_SSL=
   elif test "$ARG" = python3.6; then
     TARGET=python3.6-static
@@ -138,6 +154,7 @@ for ARG in "$@"; do
     IS_CO=
     IS_XX=
     IS_PY3=1
+    IS_MU=
     USE_SSL=
   elif test "$ARG" = stackless3.2; then
     TARGET=stackless3.2-static
@@ -145,6 +162,7 @@ for ARG in "$@"; do
     IS_CO=
     IS_XX=
     IS_PY3=1
+    IS_MU=
     USE_SSL=
   elif test "$ARG" = stacklessxl3.2; then
     TARGET=stacklessxl3.2-static
@@ -152,6 +170,7 @@ for ARG in "$@"; do
     IS_CO=
     IS_XX=
     IS_PY3=1
+    IS_MU=
     USE_SSL=1
   elif test "$ARG" = usessl; then
     USE_SSL=1
@@ -532,6 +551,8 @@ patchsetup() {
   # Modules/Setup
   if test "$IS_PY3"; then
     cp Modules.Setup.3.2.static "$BUILDDIR/Modules/Setup" || return "$?"
+  elif test "$IS_MU"; then
+    cp Modules.Setup.mu.2.7.static "$BUILDDIR/Modules/Setup" || return "$?"
   else
     cp Modules.Setup.2.7.static "$BUILDDIR/Modules/Setup" || return "$?"
   fi
@@ -983,26 +1004,43 @@ buildpythonlibzip() {
     cd "$BUILDDIR" ||
     (test -f xlib.zip && mv xlib.zip xlib.zip.old) || return "$?"
     rm -rf xlib || return "$?"
-    # Compatibility note: `cp -a' works on Linux, but not on Mac OS X, so
-    # we use `cp -R' here which works on both.
-    cp -R Lib xlib || return "$?"
-    rm -f $(find xlib -iname '*.pyc') || return "$?"
-    rm -f xlib/plat-*/regen
-    rm -rf xlib/email/test xlib/bdddb xlib/ctypes xlib/distutils \
-           xlib/idlelib xlib/lib-tk xlib/lib2to3 xlib/msilib \
-           xlib/plat-aix* xlib/plat-atheos xlib/plat-beos* \
-           xlib/plat-freebsd* xlib/plat-irix* xlib/plat-unixware* \
-           xlib/plat-mac xlib/plat-netbsd* xlib/plat-next* \
-           xlib/plat-os2* xlib/plat-riscos xlib/plat-sunos* \
-           xlib/site-packages* xlib/sqlite3/test/* xlib/turtle* xlib/tkinter \
-           xlib/bsddb/test \
-           xlib/test xlib/*.egg-info || return "$?"
-    if test "$UNAME" = Darwin; then
-      rm -rf xlib/plat-linux2 || return "$?"
+    if test "$IS_MU"; then
+      mkdir xlib || return "$?"
+      (cd Lib; tar c \
+          UserDict.py _abcoll.py _weakrefset.py abc.py codecs.py copy_reg.py \
+          encodings/__init__.py encodings/aliases.py encodings/ascii.py \
+          encodings/hex_codec.py encodings/utf_8.py \
+          genericpath.py getopt.py linecache.py os.py posixpath.py re.py \
+          site.py sre_compile.py sre_constants.py sre_parse.py stat.py \
+          struct.py types.py warnings.py) |
+          (cd xlib; tar x) || return "$?"
+      cp ../runpy.mu.2.7.py xlib/runpy.py || return "$?"
+      test -f xlib/os.py || return "$?"
     else
-      rm -rf xlib/plat-darwin || return "$?"
+      # Compatibility note: `cp -a' works on Linux, but not on Mac OS X, so
+      # we use `cp -R' here which works on both.
+      cp -R Lib xlib || return "$?"
+      rm -f $(find xlib -iname '*.pyc') || return "$?"
+      rm -f xlib/plat-*/regen
+      rm -rf xlib/email/test xlib/bdddb xlib/ctypes xlib/distutils \
+             xlib/idlelib xlib/lib-tk xlib/lib2to3 xlib/msilib \
+             xlib/plat-aix* xlib/plat-atheos xlib/plat-beos* \
+             xlib/plat-freebsd* xlib/plat-irix* xlib/plat-unixware* \
+             xlib/plat-mac xlib/plat-netbsd* xlib/plat-next* \
+             xlib/plat-os2* xlib/plat-riscos xlib/plat-sunos* \
+             xlib/site-packages* xlib/sqlite3/test/* xlib/turtle* xlib/tkinter \
+             xlib/bsddb/test \
+             xlib/test xlib/*.egg-info || return "$?"
+      if test "$UNAME" = Darwin; then
+        rm -rf xlib/plat-linux2 || return "$?"
+      else
+        rm -rf xlib/plat-darwin || return "$?"
+      fi
     fi
-    if test "$IS_PY3"; then
+
+    if test "$IS_MU"; then
+      : >xlib/site.py || return "$?"
+    elif test "$IS_PY3"; then
       cp ../site.3.2.py xlib/site.py || return "$?"
       # This is to make `import socket; socket.gethostbyname('www.google.com')
       # work.

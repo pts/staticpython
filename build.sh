@@ -140,6 +140,15 @@ for ARG in "$@"; do
     IS_PY3=
     IS_MU=1
     USE_SSL=
+  elif test "$ARG" = pythonmul || test "$ARG" = pythonmul2.7; then
+    # Minimalistic Python for Liigboot.
+    TARGET=pythonmul2.7-static
+    PYTHONTBZ2=Python-2.7.12.tar.xz
+    IS_CO=
+    IS_XX=
+    IS_PY3=
+    IS_MU=2
+    USE_SSL=
   elif test "$ARG" = python3.2; then
     TARGET=python3.2-static
     PYTHONTBZ2=Python-3.2.tar.bz2
@@ -184,7 +193,7 @@ if test -z "$STEPS"; then
   # Don't include betry here.
   # Please note that fixsetup appears multiple times here. This is intentional,
   # to get Modules/Setup right.
-  STEPS="initbuilddir initdeps buildlibssl buildlibevent2 buildlibtc configure fixsemaphore patchsetup fixsetup patchimport patchgetpath patchsqlite patchssl patchlocale fixsetup makeminipython extractpyrex patchsyncless patchgevent patchgeventmysql patchmsgpack patchpythontokyocabinet patchpythonlmdb patchconcurrence patchpycrypto patchaloaes fixsetup makepython buildpythonlibzip buildtarget"
+  STEPS="initbuilddir initdeps buildlibssl buildlibevent2 buildlibtc configure fixsemaphore patchsetup fixsetup patchimport patchgetpath patchsqlite patchmu patchssl patchlocale fixsetup makeminipython extractpyrex patchsyncless patchgevent patchgeventmysql patchmsgpack patchpythontokyocabinet patchpythonlmdb patchconcurrence patchpycrypto patchaloaes fixsetup makepython buildpythonlibzip buildtarget"
 fi
 
 INSTS="$INSTS_BASE"
@@ -660,6 +669,16 @@ enable_module() {
   perl -0777 -pi -e 's@^#$ENV{CEXT_MODNAME} @$ENV{CEXT_MODNAME} @mg' Modules/Setup || return "$?"
 }
 
+patchmu() {
+  test "$USE_MU" != 2 || return 0
+  ( cd "$BUILDDIR" || return "$?"
+    enable_module array || return "$?"
+    enable_module cStringIO || return "$?"
+    enable_module select || return "$?"
+    enable_module fcntl || return "$?"
+  ) || return "$?"
+}
+
 patchssl() {
   test "$USE_SSL" || return 0
   ( cd "$BUILDDIR" || return "$?"
@@ -1040,6 +1059,12 @@ buildpythonlibzip() {
 
     if test "$IS_MU"; then
       : >xlib/site.py || return "$?"
+      if test "$IS_MU" = 2; then
+        cp Lib/traceback.py xlib/traceback.py || return "$?"
+        cp ../mini_zipfile.py xlib/zipfile.py || return "$?"
+        cp ../mini_pipes.py xlib/pipes.py || return "$?"
+        cp ../mini_subprocess.py xlib/subprocess.py || return "$?"
+      fi
     elif test "$IS_PY3"; then
       cp ../site.3.2.py xlib/site.py || return "$?"
       # This is to make `import socket; socket.gethostbyname('www.google.com')

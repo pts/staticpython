@@ -9,7 +9,7 @@ blog post: http://ptspts.blogspot.com/2011/06/python-32-binaries-released-in.htm
 blog post: http://ptspts.blogspot.com/2014/06/whats-difference-between-staticpython.html
 blog post: http://ptspts.blogspot.com/2016/02/micropython-for-linux-i386-statically.html
 
-Send donations to the author of staticpython:
+Send donations to the author of StaticPython:
 https://flattr.com/submit/auto?user_id=pts&url=https://github.com/pts/staticpython
 
 __END__

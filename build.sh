@@ -193,7 +193,7 @@ if test -z "$STEPS"; then
   # Don't include betry here.
   # Please note that fixsetup appears multiple times here. This is intentional,
   # to get Modules/Setup right.
-  STEPS="initbuilddir initdeps buildlibssl buildlibevent2 buildlibtc configure fixsemaphore patchsetup fixsetup patchimport patchgetpath patchsqlite patchmu patchssl patchlocale fixsetup makeminipython extractpyrex patchsyncless patchgevent patchgeventmysql patchmsgpack patchpythontokyocabinet patchpythonlmdb patchconcurrence patchpycrypto patchaloaes fixsetup makepython buildpythonlibzip buildtarget"
+  STEPS="initbuilddir initdeps buildlibssl buildlibevent2 buildlibtc configure fixsemaphore patchsetup fixsetup patchimport patchdl patchgetpath patchsqlite patchmu patchssl patchlocale fixsetup makeminipython extractpyrex patchsyncless patchgevent patchgeventmysql patchmsgpack patchpythontokyocabinet patchpythonlmdb patchconcurrence patchpycrypto patchaloaes fixsetup makepython buildpythonlibzip buildtarget"
 fi
 
 INSTS="$INSTS_BASE"
@@ -605,6 +605,15 @@ fixsetup() {
 patchimport() {
   # This patch is idempotent.
   perl -pi~ -e 's@#ifdef HAVE_DYNAMIC_LOADING(?!_NOT)@#ifdef HAVE_DYNAMIC_LOADING_NOT  /* StaticPython */@g' "$BUILDDIR"/Python/import.c "$BUILDDIR"/Python/importdl.c || return "$?"
+}
+
+patchdl() {
+  # This patch is idempotent.
+  if test "$IS_PY3"; then :
+  elif test "$IS_MU"; then :
+  else
+    cp Modules.dlmodule.2.7.c "$BUILDDIR/Modules/dlmodule.c" || return "$?"
+  fi
 }
 
 patchgetpath() {

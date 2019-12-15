@@ -375,7 +375,7 @@ _curses _cursesmodule.c -lncurses
 # it is a highly experimental and dangerous device for calling
 # *arbitrary* C functions in *arbitrary* shared libraries:
 
-#dl dlmodule.c
+dl dlmodule.c
 
 
 # Modules that provide persistent dictionary-like semantics.  You will

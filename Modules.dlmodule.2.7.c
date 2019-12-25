@@ -55,6 +55,7 @@ void *dlsym(void *handle, const char *symbol) {
 }
 int dlclose(void *handle) {
   (void)handle;
+  return 0;
 }
 
 /* StaticPython */
@@ -282,21 +283,6 @@ static PyMethodDef dl_methods[] = {
     {"open",            dl_open, METH_VARARGS},
     {NULL,              NULL}           /* sentinel */
 };
-
-/* From socketmodule.c
- * Convenience routine to export an integer value.
- *
- * Errors are silently ignored, for better or for worse...
- */
-static void
-insint(PyObject *d, char *name, int value)
-{
-    PyObject *v = PyInt_FromLong((long) value);
-    if (!v || PyDict_SetItemString(d, name, v))
-        PyErr_Clear();
-
-    Py_XDECREF(v);
-}
 
 PyMODINIT_FUNC
 initdl(void)

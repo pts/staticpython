@@ -139,6 +139,8 @@ dl_call(dlobject *xp, PyObject *args)
     long res;
     Py_ssize_t i;
     Py_ssize_t n = PyTuple_Size(args);
+    const char *buffer;
+    Py_ssize_t size;
     if (n < 1) {
         PyErr_SetString(PyExc_TypeError, "at least a name is needed");
         return NULL;
@@ -174,11 +176,13 @@ dl_call(dlobject *xp, PyObject *args)
             alist[i-1] = res = PyInt_AsLong(v);
             if (res == -1 && PyErr_Occurred()) return 0;
         }
-/* !! StaticPython: Allow buffers as well. */
         else if (PyString_Check(v))
             alist[i-1] = (long)PyString_AsString(v);
         else if (v == Py_None)
             alist[i-1] = (long) ((char *)NULL);
+        else if (!PyObject_AsCharBuffer(v, &buffer, &size)) {
+            alist[i-1] = (long)buffer;
+        }
         else {
             PyErr_SetString(PyExc_TypeError,
                        "arguments must be int, string or None");

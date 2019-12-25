@@ -50,7 +50,7 @@ void *dlsym(void *handle, const char *symbol) {
   if (!strcmp(symbol, "mmap")) return mmap;
   if (!strcmp(symbol, "mprotect")) return mprotect;
   if (!strcmp(symbol, "munmap")) return munmap;
-  if (!strcmp(symbol, "memcpy")) return memcpy;
+  if (!strcmp(symbol, "memmove")) return memmove;
   return 0;
 }
 int dlclose(void *handle) {

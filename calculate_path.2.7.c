@@ -2,6 +2,8 @@
 
 /* StaticPython */  /* StaticPython-appended */
 #include <fcntl.h>
+#include <string.h>
+#include <unistd.h>
 static void calculate_path   (void) {
     extern char *Py_GetProgramName(void);
 
@@ -52,14 +54,29 @@ static void calculate_path   (void) {
 
     /**** pts ****/
     { int fd = open(proc_exe_path, O_RDONLY);
+      char hdr[22];
       /* fprintf(stderr, "progpath=(%s)\n", progpath); */
       if (fd < 0) {  /* If /proc is not avaialbe, e.g. in chroot */
+       after_bad_proc_exe:
         xzip_path = progpath;  /* Use argv[0] for the .zip filename */
       } else {
         xzip_path = proc_exe_path;
+        if (lseek(fd, -22, SEEK_END) < 0) {
+         bad_proc_exe:
+          close(fd);
+          goto after_bad_proc_exe;
+        }
+        if (read(fd, hdr, 22) != 22) goto bad_proc_exe;
+        /* ZIP end-ef-central-directory header with comment size == 0. */
+        /* We check this because Linux i386 code running Docker on macOS
+         * Ventura 13 with Apple Silicon doesn't have a working
+         * /proc/self/exe, so we fall back to progpath (arg[0], sys.interpreter).
+         */
+        if (memcmp(hdr, "PK\5\6", 4) != 0 || hdr[20] != 0 || hdr[21] != 0) goto bad_proc_exe;
         close(fd);
       }
     }
+    /*fprintf(stderr, "info: xzip_path=(%s)\n", xzip_path);*/
 
     /**** pts ****/
     if (rtpypath == NULL || rtpypath[0] == '\0') {
